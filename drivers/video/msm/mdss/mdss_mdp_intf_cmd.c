@@ -203,6 +203,9 @@ static inline void mdss_mdp_cmd_clk_on(struct mdss_mdp_cmd_ctx *ctx)
 {
 	unsigned long flags;
 
+	if (!ctx->panel_on)
+		return;
+
 	mutex_lock(&ctx->clk_mtx);
 		if (!ctx->clk_enabled) {
 			ctx->clk_enabled = 1;
