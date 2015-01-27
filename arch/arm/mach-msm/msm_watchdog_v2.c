@@ -146,9 +146,9 @@ static int panic_wdog_handler(struct notifier_block *this,
 		__raw_writel(0, wdog_dd->base + WDT0_EN);
 		mb();
 	} else {
-		__raw_writel(WDT_HZ * (panic_timeout + 4),
+		__raw_writel(WDT_HZ * (panic_timeout + 10),
 				wdog_dd->base + WDT0_BARK_TIME);
-		__raw_writel(WDT_HZ * (panic_timeout + 4),
+		__raw_writel(WDT_HZ * (panic_timeout + 10),
 				wdog_dd->base + WDT0_BITE_TIME);
 		__raw_writel(1, wdog_dd->base + WDT0_RST);
 	}
@@ -497,8 +497,9 @@ static int __devinit msm_wdog_dt_to_pdata(struct platform_device *pdev,
 	wdog_resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	pdata->size = resource_size(wdog_resource);
 	pdata->phys_base = wdog_resource->start;
-	if (unlikely(!(devm_request_region(&pdev->dev, pdata->phys_base,
-					pdata->size, "msm-watchdog")))) {
+	if (unlikely(!(devm_request_mem_region(&pdev->dev, pdata->phys_base,
+					       pdata->size, "msm-watchdog")))) {
+
 		dev_err(&pdev->dev, "%s cannot reserve watchdog region\n",
 								__func__);
 		return -ENXIO;

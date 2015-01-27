@@ -24,6 +24,11 @@
 #include "io.h"
 #include "xhci.h"
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+#include <linux/mutex.h>
+#include <linux/fastchg.h>
+#endif
+
 #ifdef CONFIG_LGE_PM
 #include <mach/board_lge.h>
 #include <linux/power_supply.h>
@@ -37,6 +42,11 @@
 #ifdef CONFIG_MACH_LGE
 #define PARAMETER_OVERRIDE_X_REG (0xF8814)
 #define DEFAULT_HSPHY_INIT (0x00D195A4) /* qcom,dwc-hsphy-init */
+#endif
+
+#ifdef CONFIG_FORCE_FAST_CHARGE
+int usb_power_curr_now = 500;
+static DEFINE_MUTEX(fast_charge_lock);
 #endif
 
 #if defined(CONFIG_USB_DWC3_MSM_VZW_SUPPORT)
@@ -509,7 +519,6 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 	static int power_supply_type;
 	struct dwc3_otg *dotg = container_of(phy->otg, struct dwc3_otg, otg);
 
-
 	if (!dotg->psy || !dotg->charger) {
 		dev_err(phy->dev, "no usb power supply/charger registered\n");
 		return 0;
@@ -559,6 +568,25 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		return 0;
 
 	dev_info(phy->dev, "Avail curr from USB = %u\n", mA);
+#if defined(CONFIG_FORCE_FAST_CHARGE) && !defined(CONFIG_SMB349_VZW_FAST_CHG)
+	mutex_lock(&fast_charge_lock);
+	usb_power_curr_now = mA;
+	if (mA > 300) {
+		if (force_fast_charge != force_fast_charge_temp)
+			force_fast_charge = force_fast_charge_temp;
+		dev_info(phy->dev, "Power plugged, FFC is set to = %d\n",
+				force_fast_charge);
+		smb349_thermal_mitigation_update(mA);
+	} else {
+		if (force_fast_charge != 0)
+			force_fast_charge_temp = force_fast_charge;
+		force_fast_charge = 0;
+		dev_info(phy->dev, "Power Unplugged, FFC is set to = %d\n",
+				force_fast_charge);
+		smb349_thermal_mitigation_update(300);
+	}
+	mutex_unlock(&fast_charge_lock);
+#endif
 
 /* BEGIN : janghyun.baek@lge.com 2012-12-26 For cable detection*/
 #ifdef CONFIG_LGE_PM
@@ -830,8 +858,19 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					work = 1;
 					break;
 				case DWC3_SDP_CHARGER:
-					dwc3_otg_set_power(phy,
-								IUNIT);
+#ifdef CONFIG_FORCE_FAST_CHARGE
+					if (force_fast_charge > 1)
+						dwc3_otg_set_power(phy,
+							fast_charge_level);
+					else if (force_fast_charge > 0)
+						dwc3_otg_set_power(phy,
+							DWC3_IDEV_CHG_MAX);
+					else
+						dwc3_otg_set_power(phy, IUNIT);
+#else
+					dwc3_otg_set_power(phy, IUNIT);
+#endif
+
 #ifdef CONFIG_LGE_PM
 					if (!slimport_is_connected()) {
 						dwc3_otg_start_peripheral(&dotg->otg,

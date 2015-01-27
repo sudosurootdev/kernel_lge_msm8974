@@ -39,12 +39,9 @@ obj-$(CONFIG_FB_MSM_MDSS_WRITEBACK) += mdss_wb.o
 # LGE_CHANGE_S
 obj-$(CONFIG_LGE_LCD_TUNING)+=lge_lcd_misc_ctrl.o
 # LGE_CHANGE_E
-
 mdss-qpic-objs := mdss_qpic.o mdss_fb.o mdss_qpic_panel.o
 obj-$(CONFIG_FB_MSM_QPIC) += mdss-qpic.o
 obj-$(CONFIG_FB_MSM_QPIC_ILI_QVGA_PANEL) += qpic_panel_ili_qvga.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_fb.o
-
-# LCD Notifier
-obj-y += lcd_notify.o
+obj-$(CONFIG_LCD_NOTIFY) += lcd_notify.o

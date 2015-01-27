@@ -141,26 +141,6 @@ static void wait_callback(struct kgsl_device *device, void *priv, u32 id,
 	wake_up_all(&drawctxt->waiting);
 }
 
-#define adreno_wait_event_interruptible_timeout(wq, condition, timeout, io)   \
-({                                                                            \
-	long __ret = timeout;                                                 \
-	if (io)                                                               \
-		__wait_io_event_interruptible_timeout(wq, condition, __ret);  \
-	else                                                                  \
-		__wait_event_interruptible_timeout(wq, condition, __ret);     \
-	__ret;                                                                \
-})
-
-#define adreno_wait_event_interruptible(wq, condition, io)                    \
-({                                                                            \
-	long __ret;                                                           \
-	if (io)                                                               \
-		__wait_io_event_interruptible(wq, condition, __ret);          \
-	else                                                                  \
-		__wait_event_interruptible(wq, condition, __ret);             \
-	__ret;                                                                \
-})
-
 static int _check_context_timestamp(struct kgsl_device *device,
 		struct adreno_context *drawctxt, unsigned int timestamp)
 {
@@ -171,9 +151,9 @@ static int _check_context_timestamp(struct kgsl_device *device,
 		drawctxt->state != ADRENO_CONTEXT_STATE_ACTIVE)
 		return 1;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 	ret = kgsl_check_timestamp(device, &drawctxt->base, timestamp);
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	return ret;
 }
@@ -193,11 +173,10 @@ int adreno_drawctxt_wait(struct adreno_device *adreno_dev,
 		struct kgsl_context *context,
 		uint32_t timestamp, unsigned int timeout)
 {
-	static unsigned int io_cnt;
 	struct kgsl_device *device = &adreno_dev->dev;
-	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct adreno_context *drawctxt = ADRENO_CONTEXT(context);
-	int ret, io;
+	int ret;
+	long ret_temp;
 
 	if (kgsl_context_detached(context))
 		return -EINVAL;
@@ -215,37 +194,30 @@ int adreno_drawctxt_wait(struct adreno_device *adreno_dev,
 	if (ret)
 		goto done;
 
-	/*
-	 * For proper power accounting sometimes we need to call
-	 * io_wait_interruptible_timeout and sometimes we need to call
-	 * plain old wait_interruptible_timeout. We call the regular
-	 * timeout N times out of 100, where N is a number specified by
-	 * the current power level
-	 */
-
-	io_cnt = (io_cnt + 1) % 100;
-	io = (io_cnt < pwr->pwrlevels[pwr->active_pwrlevel].io_fraction)
-		? 0 : 1;
-
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	if (timeout) {
-		ret = (int) adreno_wait_event_interruptible_timeout(
+		long ret_temp;
+		ret_temp = msecs_to_jiffies(timeout);
+		__wait_event_interruptible_timeout(
 			drawctxt->waiting,
 			_check_context_timestamp(device, drawctxt, timestamp),
-			msecs_to_jiffies(timeout), io);
+			ret_temp);
 
-		if (ret == 0)
+		if (ret_temp == 0)
 			ret = -ETIMEDOUT;
-		else if (ret > 0)
+		else if (ret_temp > 0)
 			ret = 0;
+		else
+			ret = (int) ret_temp;
 	} else {
-		ret = (int) adreno_wait_event_interruptible(drawctxt->waiting,
+		__wait_event_interruptible(drawctxt->waiting,
 			_check_context_timestamp(device, drawctxt, timestamp),
-				io);
+				ret_temp);
+		ret = (int)ret_temp;
 	}
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	/* -EDEADLK if the context was invalidated while we were waiting */
 	if (drawctxt->state == ADRENO_CONTEXT_STATE_INVALID)
@@ -314,7 +286,7 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 		goto done;
 	}
 
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	if (timeout) {
 		ret = (int) wait_event_timeout(drawctxt->waiting,
@@ -330,7 +302,7 @@ int adreno_drawctxt_wait_global(struct adreno_device *adreno_dev,
 			_check_global_timestamp(device, drawctxt, timestamp));
 	}
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	if (ret)
 		kgsl_cancel_events_timestamp(device, NULL, timestamp);
@@ -381,10 +353,10 @@ void adreno_drawctxt_invalidate(struct kgsl_device *device,
 
 		mutex_unlock(&drawctxt->mutex);
 
-		mutex_lock(&device->mutex);
+		kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 		kgsl_cancel_events_timestamp(device, context,
 			cmdbatch->timestamp);
-		mutex_unlock(&device->mutex);
+		kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 		kgsl_cmdbatch_destroy(cmdbatch);
 		mutex_lock(&drawctxt->mutex);
