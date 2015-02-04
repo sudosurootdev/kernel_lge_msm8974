@@ -171,6 +171,8 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
 				  -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
 				  -e s/sh[234].*/sh/ )
 
+SUBARCH := arm
+
 # Cross compiling and selecting different set of gcc/bin-utils
 # ---------------------------------------------------------------------------
 #
@@ -193,6 +195,7 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 export KBUILD_BUILDHOST := $(SUBARCH)
 ARCH		?= $(SUBARCH)
+CROSS_COMPILE	?= arm-eabi-
 CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 
 # Architecture as present in compile.h
@@ -245,9 +248,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -pipe -DNDEBUG -fgcse-las -floop-nest-optimize -fgraphite -fgraphite-identity -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
-HOSTCXXFLAGS = -pipe -DNDEBUG -O3 -fgcse-las -floop-nest-optimize -fgraphite -fgraphite-identity -floop-flatten -floop-parallelize-all -ftree-loop-linear -floop-interchange -floop-strip-mine -floop-block
-
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer
+HOSTCXXFLAGS = -O3
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -331,7 +333,7 @@ include $(srctree)/scripts/Kbuild.include
 
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
-CC		= ccache $(CROSS_COMPILE)gcc
+REAL_CC		= $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
 NM		= $(CROSS_COMPILE)nm
@@ -345,10 +347,14 @@ DEPMOD		= /sbin/depmod
 PERL		= perl
 CHECK		= sparse
 
+# Use the wrapper for the compiler.  This wrapper scans for new
+# warnings and causes the build to stop upon encountering them.
+CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 				  -Wbitwise -Wno-return-void $(CF)
 
-KERNEL_FLAGS	= -marm -mtune=cortex-a15 -mfpu=neon-vfpv4 \
+KERNEL_FLAGS	= -O3 -marm -mtune=cortex-a15 -mfpu=neon-vfpv4 \
 				  -mvectorize-with-neon-quad -fgcse-after-reload -fgcse-sm \
 				  -fgcse-las -ftree-loop-im -ftree-loop-ivcanon -fivopts \
 				  -ftree-vectorize -fmodulo-sched -ffast-math
@@ -367,7 +373,7 @@ CFLAGS_KERNEL   = -mfpu=neon-vfpv4 \
 				  -mtune=cortex-a15 \
 				  -fgcse-las \
 				  -fpredictive-commoning \
-				  -O2
+				  -O3
 
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
