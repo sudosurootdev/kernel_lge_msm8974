@@ -49,7 +49,7 @@
  * version 2.2 allow to charge on 900ma lock.
  * version 2.3 added more checks to thermal mitigation functions and corrected code style.
  * removed updating charging scenario when no charger connected. no point to do so.
- * version 2.4 removed 2000 and 1800ma sets, as STOCK code allow only 1600, i dont want to change that.
+ * version 2.4 allowed full 2000ma to be set in charger driver.
  */
 
 #define FAST_CHARGE_VERSION	"Version 2.4"
@@ -109,6 +109,8 @@ static ssize_t charge_level_store(struct kobject *kobj,
 		case FAST_CHARGE_900:
 		case FAST_CHARGE_1200:
 		case FAST_CHARGE_1600:
+		case FAST_CHARGE_1800:
+		case FAST_CHARGE_2000:
 			fast_charge_level = new_charge_level;
 			return count;
 		default:

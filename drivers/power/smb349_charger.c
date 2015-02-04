@@ -1777,6 +1777,12 @@ int smb349_thermal_mitigation_update(int value)
 				case FAST_CHARGE_1600:
 					new_thermal_mitigation = 1600;
 					break;
+				case FAST_CHARGE_1800:
+					new_thermal_mitigation = 1800;
+					break;
+				case FAST_CHARGE_2000:
+					new_thermal_mitigation = 2000;
+					break;
 				default:
 					break;
 			}
@@ -2450,7 +2456,7 @@ static void smb349_bb_worker_trigger(struct smb349_struct *smb349_chg,
  */
 static void smb349_irq_worker(struct work_struct *work)
 {
-	u8 val;
+	u8 val = 0;
 	int ret = 0, usb_present = 0, host_mode;
 #if defined(CONFIG_BQ51053B_CHARGER) && defined(CONFIG_WIRELESS_CHARGER)
 	int wlc_present =0;
@@ -3417,6 +3423,14 @@ static int smb349_input_current_limit_set(struct smb349_struct *smb349_chg, int 
 			case FAST_CHARGE_1600:
 				i = 6;
 				custom_ma = FAST_CHARGE_1600;
+				break;
+			case FAST_CHARGE_1800:
+				i = 9;
+				custom_ma = FAST_CHARGE_1800;
+				break;
+			case FAST_CHARGE_2000:
+				i = 0xA;
+				custom_ma = FAST_CHARGE_2000;
 				break;
 			default:
 				break;
