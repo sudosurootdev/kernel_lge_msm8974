@@ -2180,7 +2180,7 @@ static void configure_vbat_monitor_high(struct qpnp_bms_chip *chip)
 static void btm_notify_vbat(enum qpnp_tm_state state, void *ctx)
 {
 	struct qpnp_bms_chip *chip = ctx;
-	int vbat_uv;
+	int vbat_uv = 0;
 	struct qpnp_vadc_result result;
 	int rc;
 

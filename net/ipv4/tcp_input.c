@@ -4374,6 +4374,7 @@ static void tcp_sack_remove(struct tcp_sock *tp)
 		return;
 	}
 
+	BUG_ON(num_sacks > 4);
 	for (this_sack = 0; this_sack < num_sacks;) {
 		/* Check if the start of the sack is covered by RCV.NXT. */
 		if (!before(tp->rcv_nxt, sp->start_seq)) {
@@ -4384,7 +4385,8 @@ static void tcp_sack_remove(struct tcp_sock *tp)
 
 			/* Zap this SACK, by moving forward any other SACKS. */
 			for (i=this_sack+1; i < num_sacks; i++)
-				tp->selective_acks[i-1] = tp->selective_acks[i];
+				if (i < 4)
+					tp->selective_acks[i-1] = tp->selective_acks[i];
 			num_sacks--;
 			continue;
 		}
