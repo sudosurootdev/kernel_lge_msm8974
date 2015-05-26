@@ -62,23 +62,6 @@ struct tzbsp_resp {
 	int ret;
 };
 
-static void venus_hfi_dump_packet(u8 *packet)
-{
-	u32 c = 0, packet_size = *(u32 *)packet;
-	const int row_size = 32;
-	/* row must contain enough for 0xdeadbaad * 8 to be converted into
-	 * "de ad ba ab " * 8 + '\0' */
-	char row[3 * row_size];
-
-	for (c = 0; c * row_size < packet_size; ++c) {
-		int bytes_to_read = ((c + 1) * row_size > packet_size) ?
-			packet_size % row_size : row_size;
-		hex_dump_to_buffer(packet + c * row_size, bytes_to_read,
-				row_size, 4, row, sizeof(row), false);
-		dprintk(VIDC_PKT, "%s\n", row);
-	}
-}
-
 static void venus_hfi_sim_modify_cmd_packet(u8 *packet)
 {
 	struct hfi_cmd_sys_session_init_packet *sys_init;
@@ -188,18 +171,13 @@ static int venus_hfi_write_queue(void *info, u8 *packet, u32 *rx_req_is_set)
 		return -EINVAL;
 	}
 
+	venus_hfi_sim_modify_cmd_packet(packet);
+
 	queue = (struct hfi_queue_header *) qinfo->q_hdr;
 
 	if (!queue) {
 		dprintk(VIDC_ERR, "queue not present");
 		return -ENOENT;
-	}
-
-	venus_hfi_sim_modify_cmd_packet(packet);
-
-	if (msm_vidc_debug & VIDC_PKT) {
-		dprintk(VIDC_PKT, "%s: %p\n", __func__, qinfo);
-		venus_hfi_dump_packet(packet);
 	}
 
 	packet_size_in_words = (*(u32 *)packet) >> 2;
@@ -381,10 +359,6 @@ static int venus_hfi_read_queue(void *info, u8 *packet, u32 *pb_tx_req_is_set)
 
 	*pb_tx_req_is_set = (1 == queue->qhdr_tx_req) ? 1 : 0;
 	venus_hfi_hal_sim_modify_msg_packet(packet);
-	if (msm_vidc_debug & VIDC_PKT) {
-		dprintk(VIDC_PKT, "%s: %p\n", __func__, qinfo);
-		venus_hfi_dump_packet(packet);
-	}
 	dprintk(VIDC_DBG, "Out : ");
 	return rc;
 }
@@ -1030,7 +1004,6 @@ static int venus_hfi_sys_set_idle_message(struct venus_hfi_device *device,
 static int venus_hfi_core_init(void *device)
 {
 	struct hfi_cmd_sys_init_packet pkt;
-	struct hfi_cmd_sys_get_property_packet version_pkt;
 	int rc = 0;
 	struct venus_hfi_device *dev;
 
@@ -1089,10 +1062,6 @@ static int venus_hfi_core_init(void *device)
 		rc = -ENOTEMPTY;
 		goto err_core_init;
 	}
-	rc = create_pkt_cmd_sys_image_version(&version_pkt);
-	if (rc || venus_hfi_iface_cmdq_write(dev, &version_pkt))
-		dprintk(VIDC_WARN, "Failed to send image version pkt to f/w");
-
 	return rc;
 err_core_init:
 	disable_irq_nosync(dev->hal_data->irq);
@@ -1422,10 +1391,6 @@ static int venus_hfi_session_get_property(void *sess,
 	case HAL_CONFIG_VPE_DEINTERLACE:
 		break;
 	case HAL_SYS_DEBUG_CONFIG:
-		break;
-	case HAL_PARAM_BUFFER_ALLOC_MODE:
-		break;
-	case HAL_PARAM_VDEC_FRAME_ASSEMBLY:
 		break;
 	/*FOLLOWING PROPERTIES ARE NOT IMPLEMENTED IN CORE YET*/
 	case HAL_CONFIG_BUFFER_REQUIREMENTS:
@@ -2331,15 +2296,13 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 	bus_info = &device->resources.bus_info;
 
 	bus_info->ddr_handle[MSM_VIDC_ENCODER] =
-		msm_bus_scale_register_client(
-			&device->res->bus_pdata[BUS_IDX_ENC_DDR]);
+		msm_bus_scale_register_client(&device->res->bus_pdata[2]);
 	if (!bus_info->ddr_handle[MSM_VIDC_ENCODER]) {
 		dprintk(VIDC_ERR, "Failed to register bus scale client\n");
 		goto err_init_bus;
 	}
 	bus_info->ddr_handle[MSM_VIDC_DECODER] =
-		msm_bus_scale_register_client(
-			&device->res->bus_pdata[BUS_IDX_DEC_DDR]);
+		msm_bus_scale_register_client(&device->res->bus_pdata[3]);
 	if (!bus_info->ddr_handle[MSM_VIDC_DECODER]) {
 		dprintk(VIDC_ERR, "Failed to register bus scale client\n");
 		goto err_init_bus;
@@ -2348,7 +2311,7 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 	if (device->res->has_ocmem) {
 		bus_info->ocmem_handle[MSM_VIDC_ENCODER] =
 			msm_bus_scale_register_client(
-				&device->res->bus_pdata[BUS_IDX_ENC_OCMEM]);
+						&device->res->bus_pdata[0]);
 		if (!bus_info->ocmem_handle[MSM_VIDC_ENCODER]) {
 			dprintk(VIDC_ERR,
 				"Failed to register bus scale client\n");
@@ -2357,7 +2320,7 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 
 		bus_info->ocmem_handle[MSM_VIDC_DECODER] =
 			msm_bus_scale_register_client(
-				&device->res->bus_pdata[BUS_IDX_DEC_OCMEM]);
+						&device->res->bus_pdata[1]);
 		if (!bus_info->ocmem_handle[MSM_VIDC_DECODER]) {
 			dprintk(VIDC_ERR,
 				"Failed to register bus scale client\n");
@@ -2381,35 +2344,15 @@ static const u32 venus_hfi_bus_table[] = {
 	979200,
 };
 
-static int venus_hfi_get_bus_vector(struct venus_hfi_device *device, int load,
-			enum session_type type, enum mem_type mtype)
+static int venus_hfi_get_bus_vector(int load)
 {
 	int num_rows = sizeof(venus_hfi_bus_table)/(sizeof(u32));
 	int i, j;
-	int idx = 0;
-
-	if (!device || (mtype != DDR_MEM && mtype != OCMEM_MEM) ||
-		(type != MSM_VIDC_ENCODER && type != MSM_VIDC_DECODER)) {
-		dprintk(VIDC_ERR, "%s invalid params", __func__);
-		return -EINVAL;
-	}
-
 	for (i = 0; i < num_rows; i++) {
 		if (load <= venus_hfi_bus_table[i])
 			break;
 	}
-
-	if (type == MSM_VIDC_ENCODER)
-		idx = (mtype == DDR_MEM) ? BUS_IDX_ENC_DDR : BUS_IDX_ENC_OCMEM;
-	else
-		idx = (mtype == DDR_MEM) ? BUS_IDX_DEC_DDR : BUS_IDX_DEC_OCMEM;
-
 	j = clamp(i, 0, num_rows-1) + 1;
-
-	/* Ensure bus index remains within the supported range,
-	* as specified in the device dtsi file */
-	j = clamp(j, 0, device->res->bus_pdata[idx].num_usecases - 1);
-
 	dprintk(VIDC_DBG, "Required bus = %d\n", j);
 	return j;
 }
@@ -2420,7 +2363,6 @@ static int venus_hfi_scale_bus(void *dev, int load,
 	int rc = 0;
 	u32 handle = 0;
 	struct venus_hfi_device *device = dev;
-	int bus_vector = 0;
 
 	if (!device) {
 		dprintk(VIDC_ERR, "%s invalid device handle %p",
@@ -2434,13 +2376,8 @@ static int venus_hfi_scale_bus(void *dev, int load,
 		handle = device->resources.bus_info.ocmem_handle[type];
 
 	if (handle) {
-		bus_vector = venus_hfi_get_bus_vector(device, load,
-				type, mtype);
-		if (bus_vector < 0) {
-			dprintk(VIDC_ERR, "Failed to get bus vector\n");
-			return -EINVAL;
-		}
-		rc = msm_bus_scale_client_update_request(handle, bus_vector);
+		rc = msm_bus_scale_client_update_request(
+				handle, venus_hfi_get_bus_vector(load));
 		if (rc)
 			dprintk(VIDC_ERR, "Failed to scale bus: %d\n", rc);
 	} else {
@@ -2691,7 +2628,7 @@ static void venus_hfi_deinit_resources(struct venus_hfi_device *device)
 
 static int venus_hfi_iommu_attach(struct venus_hfi_device *device)
 {
-	int rc = 0;
+	int rc;
 	struct iommu_domain *domain;
 	int i;
 	struct iommu_set *iommu_group_set;
@@ -2861,8 +2798,8 @@ fail_protect_mem:
 	venus_hfi_disable_clks(device);
 fail_enable_clks:
 	subsystem_put(device->resources.fw.cookie);
-fail_load_fw:
 	device->resources.fw.cookie = NULL;
+fail_load_fw:
 	venus_hfi_iommu_detach(device);
 fail_iommu_attach:
 	return rc;

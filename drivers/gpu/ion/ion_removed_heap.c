@@ -29,7 +29,6 @@
 
 #include <asm/mach/map.h>
 #include <asm/cacheflush.h>
-#include <linux/io.h>
 #include <linux/msm_ion.h>
 
 struct ion_removed_heap {
@@ -195,7 +194,7 @@ void ion_removed_heap_unmap_kernel(struct ion_heap *heap,
 	struct ion_removed_heap *removed_heap =
 		container_of(heap, struct ion_removed_heap, heap);
 
-	iounmap(buffer->vaddr);
+	__arm_iounmap(buffer->vaddr);
 	buffer->vaddr = NULL;
 
 	ion_removed_release_region(removed_heap);
@@ -234,7 +233,7 @@ void ion_removed_heap_unmap_user(struct ion_heap *heap,
 }
 
 static int ion_removed_print_debug(struct ion_heap *heap, struct seq_file *s,
-				    const struct list_head *mem_map)
+				    const struct rb_root *mem_map)
 {
 	struct ion_removed_heap *removed_heap =
 		container_of(heap, struct ion_removed_heap, heap);
@@ -248,14 +247,16 @@ static int ion_removed_print_debug(struct ion_heap *heap, struct seq_file *s,
 		unsigned long size = removed_heap->total_size;
 		unsigned long end = base+size;
 		unsigned long last_end = base;
-		struct mem_map_data *data;
+		struct rb_node *n;
 
 		seq_printf(s, "\nMemory Map\n");
 		seq_printf(s, "%16.s %14.s %14.s %14.s\n",
 			   "client", "start address", "end address",
 			   "size (hex)");
 
-		list_for_each_entry(data, mem_map, node) {
+		for (n = rb_first(mem_map); n; n = rb_next(n)) {
+			struct mem_map_data *data =
+					rb_entry(n, struct mem_map_data, node);
 			const char *client_name = "(null)";
 
 			if (last_end < data->addr) {

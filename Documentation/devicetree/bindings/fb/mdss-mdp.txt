@@ -23,10 +23,6 @@ Required properties
 				previous property, the amount of fetch ids
 				defined should match the number of offsets
 				defined in property: qcom,mdss-pipe-vig-off
-- qcom,mdss-pipe-vig-xin-id:	Array of VBIF clients ids (xins) corresponding
-				to the respective VIG pipes. Number of xin ids
-				defined should match the number of offsets
-				defined in property: qcom,mdss-pipe-vig-off
 - qcom,mdss-pipe-rgb-off:	Array of offsets for MDP source surface pipes of
 				type RGB, the offsets are calculated from
 				register "mdp_phys" defined in reg property.
@@ -38,10 +34,6 @@ Required properties
 				previous property, the amount of fetch ids
 				defined should match the number of offsets
 				defined in property: qcom,mdss-pipe-rgb-off
-- qcom,mdss-pipe-rgb-xin-id:	Array of VBIF clients ids (xins) corresponding
-				to the respective RGB pipes. Number of xin ids
-				defined should match the number of offsets
-				defined in property: qcom,mdss-pipe-rgb-off
 - qcom,mdss-pipe-dma-off:	Array of offsets for MDP source surface pipes of
 				type DMA, the offsets are calculated from
 				register "mdp_phys" defined in reg property.
@@ -51,10 +43,6 @@ Required properties
 - qcom,mdss-pipe-dma-fetch-id:	Array of shared memory pool fetch ids
 				corresponding to the DMA pipe offsets defined in
 				previous property, the amount of fetch ids
-				defined should match the number of offsets
-				defined in property: qcom,mdss-pipe-dma-off
-- qcom,mdss-pipe-dma-xin-id:	Array of VBIF clients ids (xins) corresponding
-				to the respective DMA pipes. Number of xin ids
 				defined should match the number of offsets
 				defined in property: qcom,mdss-pipe-dma-off
 - qcom,mdss-smp-data:		Array of shared memory pool data. There should
@@ -135,21 +123,6 @@ Optional properties:
 				offsets as well (i.e. the first mixer offset
 				corresponds to the same pathway as the first
 				AD offset).
-- qcom,mdss-has-wfd-blk: Boolean property to indicate the presence of dedicated
-			writeback wfd block in MDSS as opposed to writeback
-			block that is shared between rotator and wfd.
-- qcom,mdss-smp-mb-per-pipe:	Maximum number of shared memory pool blocks
-				restricted for a source surface pipe. If this
-				property is not specified, no such restriction
-				would be applied.
-- qcom,mdss-pipe-rgb-fixed-mmb: Array of indexes describing fixed Memory Macro
-				Blocks (MMBs) for rgb pipes. First value denotes
-				total numbers of MMBs per pipe while values, if
-				any, following first one denotes indexes of MMBs
-				to that RGB pipe.
-- qcom,mdss-highest-bank-bit: Property to indicate tile format as opposed to usual
-				linear format. The value tells the GPU highest memory
-				 bank bit used.
 
 Optional subnodes:
 Child nodes representing the frame buffer virtual devices.
@@ -160,25 +133,8 @@ Subnode properties:
 - qcom,mdss-mixer-swap: A boolean property that indicates if the mixer muxes
 			 need to be swapped based on the target panel.
 			 By default the property is not defined.
-- qcom,mdss-fb-split:	 Array of splitted framebuffer size. There should
-			 be only two values in this property. The values
-			 correspond to the left and right size respectively.
-			 MDP muxes two mixer output together before sending to
-			 the panel interface and these values are used to set
-			 each mixer width, so the sum of these two values
-			 should be equal to the panel x-resolution.
 
-			 Note that if the sum of two values is not equal to
-			 x-resolution or this subnode itself is not defined
-			 in device tree there are two cases: 1)split is not
-			 enabled if framebuffer size is less than max mixer
-			 width; 2) the defaut even split is enabled if frambuffer
-			 size is greater than max mixer width.
-- qcom,memblock-reserve: Specifies the memory location and the size reserved
-			 for the framebuffer used to display the splash screen.
-			 This property is required whenever the continuous splash
-			 screen feature is enabled for the corresponding
-			 framebuffer device.
+
 
 Example:
 	qcom,mdss_mdp@fd900000 {
@@ -201,21 +157,10 @@ Example:
 		qcom,mdss-pipe-vig-fetch-id = <1 4 7>;
 		qcom,mdss-pipe-rgb-fetch-id = <16 17 18>;
 		qcom,mdss-pipe-dma-fetch-id = <10 13>;
-		qcom,mdss-pipe-rgb-fixed-mmb =	<2 0 1>,
-						<2 2 3>,
-						<2 4 5>,
-						<2 6 7>;
-
-		qcom,mdss-pipe-vig-xin-id = <0 4 8>;
-		qcom,mdss-pipe-rgb-xin-id = <1 5 9>;
-		qcom,mdss-pipe-dma-xin-id = <2 10>;
-
 		qcom,mdss-smp-data = <22 4096>;
 		qcom,mdss-rot-block-size = <64>;
-		qcom,mdss-smp-mb-per-pipe = <2>;
 		qcom,mdss-has-bwc;
 		qcom,mdss-has-decimation;
-		qcom,mdss-has-wfd-blk;
 
 		qcom,mdss-ctl-off = <0x00000600 0x00000700 0x00000800
 				     0x00000900 0x0000A00>;
@@ -233,7 +178,6 @@ Example:
 			cell-index = <0>;
 			compatible = "qcom,mdss-fb";
 			qcom,mdss-mixer-swap;
-			qcom,mdss-fb-split = <480 240>
 		};
 	};
 

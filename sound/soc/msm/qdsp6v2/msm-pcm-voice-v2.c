@@ -67,9 +67,9 @@ static int is_voice2(struct msm_voice *pvoice2)
 		return false;
 }
 
-static uint32_t get_session_id(struct msm_voice *pvoc)
+static uint16_t get_session_id(struct msm_voice *pvoc)
 {
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	if (is_volte(pvoc))
 		session_id = voc_get_session_id(VOLTE_SESSION_NAME);
@@ -175,7 +175,7 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_voice *prtd = runtime->private_data;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 	int ret = 0;
 
 	mutex_lock(&prtd->lock);
@@ -201,7 +201,7 @@ static int msm_pcm_prepare(struct snd_pcm_substream *substream)
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_voice *prtd = runtime->private_data;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	mutex_lock(&prtd->lock);
 
@@ -236,7 +236,7 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_voice *prtd = runtime->private_data;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	pr_debug("%s: cmd = %d\n", __func__, cmd);
 
@@ -333,83 +333,188 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int msm_voice_gain_put(struct snd_kcontrol *kcontrol,
-			      struct snd_ctl_elem_value *ucontrol)
+static int msm_voice_volume_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 0;
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static int msm_voice_volume_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
 	int volume = ucontrol->value.integer.value[0];
-	uint32_t session_id = ucontrol->value.integer.value[1];
-	int ramp_duration = ucontrol->value.integer.value[2];
+	pr_debug("%s: volume: %d\n", __func__, volume);
+	voc_set_rx_vol_index(voc_get_session_id(VOICE_SESSION_NAME),
+						RX_PATH, volume);
+	return 0;
+}
 
-	if ((volume < 0) || (ramp_duration < 0)
-		|| (ramp_duration > MAX_RAMP_DURATION)) {
-		pr_err(" %s Invalid arguments", __func__);
+static int msm_volte_volume_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
 
-		ret = -EINVAL;
-		goto done;
-	}
+static int msm_volte_volume_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int volume = ucontrol->value.integer.value[0];
+	pr_debug("%s: volume: %d\n", __func__, volume);
+	voc_set_rx_vol_index(voc_get_session_id(VOLTE_SESSION_NAME),
+						RX_PATH, volume);
+	return 0;
+}
 
-	pr_debug("%s: volume: %d session_id: %#x ramp_duration: %d\n", __func__,
-		volume, session_id, ramp_duration);
+static int msm_voice2_volume_get(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
 
-	voc_set_rx_vol_step(session_id, RX_PATH, volume, ramp_duration);
+static int msm_voice2_volume_put(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_value *ucontrol)
+{
+	int volume = ucontrol->value.integer.value[0];
+	pr_debug("%s: volume: %d\n", __func__, volume);
 
-done:
-	return ret;
+	voc_set_rx_vol_index(voc_get_session_id(VOICE2_SESSION_NAME),
+						RX_PATH, volume);
+	return 0;
+}
+
+static int msm_voice_mute_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
 }
 
 static int msm_voice_mute_put(struct snd_kcontrol *kcontrol,
-			      struct snd_ctl_elem_value *ucontrol)
+				struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 0;
 	int mute = ucontrol->value.integer.value[0];
-	uint32_t session_id = ucontrol->value.integer.value[1];
-	int ramp_duration = ucontrol->value.integer.value[2];
 
-	if ((mute < 0) || (mute > 1) || (ramp_duration < 0)
-		|| (ramp_duration > MAX_RAMP_DURATION)) {
-		pr_err(" %s Invalid arguments", __func__);
+	pr_debug("%s: mute=%d\n", __func__, mute);
 
-		ret = -EINVAL;
-		goto done;
-	}
+	voc_set_tx_mute(voc_get_session_id(VOICE_SESSION_NAME), TX_PATH, mute);
 
-	pr_debug("%s: mute=%d session_id=%#x ramp_duration=%d\n", __func__,
-		mute, session_id, ramp_duration);
-
-	voc_set_tx_mute(session_id, TX_PATH, mute, ramp_duration);
-
-done:
-	return ret;
+	return 0;
 }
 
+//[AUDIO_BSP] sehwan.lee@lge.com phone memo [START]
+static int msm_phonememo_voice_mute_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_phonememo_tx_mute(voc_get_session_id(VOICE_SESSION_NAME), TX_PATH, mute);
+
+	return 0;
+}
+//[AUDIO_BSP] sehwan.lee@lge.com phone memo [END]
+
+static int msm_volte_mute_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static int msm_volte_mute_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_tx_mute(voc_get_session_id(VOLTE_SESSION_NAME), TX_PATH, mute);
+
+	return 0;
+}
+
+static int msm_voice2_mute_get(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = 0;
+	return 0;
+}
+
+static int msm_voice2_mute_put(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_tx_mute(voc_get_session_id(VOICE2_SESSION_NAME), TX_PATH, mute);
+
+	return 0;
+}
+
+static int msm_voice_rx_device_mute_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		voc_get_rx_device_mute(voc_get_session_id(VOICE_SESSION_NAME));
+	return 0;
+}
 
 static int msm_voice_rx_device_mute_put(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 0;
 	int mute = ucontrol->value.integer.value[0];
-	uint32_t session_id = ucontrol->value.integer.value[1];
-	int ramp_duration = ucontrol->value.integer.value[2];
 
-	if ((mute < 0) || (mute > 1) || (ramp_duration < 0)
-		|| (ramp_duration > MAX_RAMP_DURATION)) {
-		pr_err(" %s Invalid arguments", __func__);
+	pr_debug("%s: mute=%d\n", __func__, mute);
 
-		ret = -EINVAL;
-		goto done;
-	}
+	voc_set_rx_device_mute(voc_get_session_id(VOICE_SESSION_NAME), mute);
 
-	pr_debug("%s: mute=%d session_id=%#x ramp_duration=%d\n", __func__,
-		mute, session_id, ramp_duration);
-
-	voc_set_rx_device_mute(session_id, mute, ramp_duration);
-
-done:
-	return ret;
+	return 0;
 }
 
+static int msm_volte_rx_device_mute_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		voc_get_rx_device_mute(voc_get_session_id(VOLTE_SESSION_NAME));
+	return 0;
+}
 
+static int msm_volte_rx_device_mute_put(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_rx_device_mute(voc_get_session_id(VOLTE_SESSION_NAME), mute);
+
+	return 0;
+}
+
+static int msm_voice2_rx_device_mute_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		voc_get_rx_device_mute(voc_get_session_id(VOICE2_SESSION_NAME));
+	return 0;
+}
+
+static int msm_voice2_rx_device_mute_put(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	int mute = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: mute=%d\n", __func__, mute);
+
+	voc_set_rx_device_mute(voc_get_session_id(VOICE2_SESSION_NAME), mute);
+
+	return 0;
+}
 
 static const char const *tty_mode[] = {"OFF", "HCO", "VCO", "FULL"};
 static const struct soc_enum msm_tty_mode_enum[] = {
@@ -442,28 +547,64 @@ static int msm_voice_slowtalk_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
 	int st_enable = ucontrol->value.integer.value[0];
-	uint32_t session_id = ucontrol->value.integer.value[1];
 
-	pr_debug("%s: st enable=%d session_id=%#x\n", __func__, st_enable,
-		 session_id);
+	pr_debug("%s: st enable=%d\n", __func__, st_enable);
 
-	voc_set_pp_enable(session_id,
+	voc_set_pp_enable(voc_get_session_id(VOICE_SESSION_NAME),
+			  MODULE_ID_VOICE_MODULE_ST, st_enable);
+	voc_set_pp_enable(voc_get_session_id(VOICE2_SESSION_NAME),
 			  MODULE_ID_VOICE_MODULE_ST, st_enable);
 
 	return 0;
 }
 
+static int msm_voice_slowtalk_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		voc_get_pp_enable(voc_get_session_id(VOICE_SESSION_NAME),
+				MODULE_ID_VOICE_MODULE_ST);
+	return 0;
+}
+
 static struct snd_kcontrol_new msm_voice_controls[] = {
-	SOC_SINGLE_MULTI_EXT("Voice Rx Device Mute", SND_SOC_NOPM, 0, VSID_MAX,
-				0, 3, NULL, msm_voice_rx_device_mute_put),
-	SOC_SINGLE_MULTI_EXT("Voice Tx Mute", SND_SOC_NOPM, 0, VSID_MAX,
-				0, 3, NULL, msm_voice_mute_put),
-	SOC_SINGLE_MULTI_EXT("Voice Rx Gain", SND_SOC_NOPM, 0, VSID_MAX, 0, 3,
-				NULL, msm_voice_gain_put),
+	SOC_SINGLE_EXT("Voice Rx Device Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_voice_rx_device_mute_get,
+				msm_voice_rx_device_mute_put),
+	SOC_SINGLE_EXT("Voice Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_voice_mute_get, msm_voice_mute_put),
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [START]
+	SOC_SINGLE_EXT("Voice Tx Mute Phonememo", SND_SOC_NOPM, 0, 1, 0,
+				msm_voice_mute_get, msm_phonememo_voice_mute_put),
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [END]
+#if defined(CONFIG_SND_VOICE_VOLUME)
+	SOC_SINGLE_EXT("Voice Rx Volume", SND_SOC_NOPM, 0, CONFIG_SND_VOICE_VOLUME, 0,
+#else
+	SOC_SINGLE_EXT("Voice Rx Volume", SND_SOC_NOPM, 0, 9, 0,
+#endif
+				msm_voice_volume_get, msm_voice_volume_put),
 	SOC_ENUM_EXT("TTY Mode", msm_tty_mode_enum[0], msm_voice_tty_mode_get,
 				msm_voice_tty_mode_put),
-	SOC_SINGLE_MULTI_EXT("Slowtalk Enable", SND_SOC_NOPM, 0, VSID_MAX, 0, 2,
-				NULL, msm_voice_slowtalk_put),
+	SOC_SINGLE_EXT("Slowtalk Enable", SND_SOC_NOPM, 0, 1, 0,
+				msm_voice_slowtalk_get, msm_voice_slowtalk_put),
+	SOC_SINGLE_EXT("VoLTE Rx Device Mute", SND_SOC_NOPM, 0, 1, 0,
+			msm_volte_rx_device_mute_get,
+			msm_volte_rx_device_mute_put),
+	SOC_SINGLE_EXT("VoLTE Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+				msm_volte_mute_get, msm_volte_mute_put),
+#if defined(CONFIG_SND_VOICE_VOLUME)
+	SOC_SINGLE_EXT("VoLTE Rx Volume", SND_SOC_NOPM, 0, CONFIG_SND_VOICE_VOLUME, 0,
+#else
+	SOC_SINGLE_EXT("VoLTE Rx Volume", SND_SOC_NOPM, 0, 9, 0,
+#endif
+				msm_volte_volume_get, msm_volte_volume_put),
+	SOC_SINGLE_EXT("Voice2 Rx Device Mute", SND_SOC_NOPM, 0, 1, 0,
+		       msm_voice2_rx_device_mute_get,
+		       msm_voice2_rx_device_mute_put),
+	SOC_SINGLE_EXT("Voice2 Tx Mute", SND_SOC_NOPM, 0, 1, 0,
+		       msm_voice2_mute_get, msm_voice2_mute_put),
+	SOC_SINGLE_EXT("Voice2 Rx Volume", SND_SOC_NOPM, 0, 5, 0,
+		       msm_voice2_volume_get, msm_voice2_volume_put),
 };
 
 static struct snd_pcm_ops msm_pcm_ops = {

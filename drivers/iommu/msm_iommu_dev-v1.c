@@ -32,14 +32,6 @@
 
 static struct of_device_id msm_iommu_v1_ctx_match_table[];
 
-#ifdef CONFIG_IOMMU_LPAE
-static const char *BFB_REG_NODE_NAME = "qcom,iommu-lpae-bfb-regs";
-static const char *BFB_DATA_NODE_NAME = "qcom,iommu-lpae-bfb-data";
-#else
-static const char *BFB_REG_NODE_NAME = "qcom,iommu-bfb-regs";
-static const char *BFB_DATA_NODE_NAME = "qcom,iommu-bfb-data";
-#endif
-
 static int msm_iommu_parse_bfb_settings(struct platform_device *pdev,
 				    struct msm_iommu_drvdata *drvdata)
 {
@@ -48,17 +40,17 @@ static int msm_iommu_parse_bfb_settings(struct platform_device *pdev,
 	int ret;
 
 	/*
-	 * It is not valid for a device to have the BFB_REG_NODE_NAME
-	 * property but not the BFB_DATA_NODE_NAME property, and vice versa.
+	 * It is not valid for a device to have the qcom,iommu-bfb-regs
+	 * property but not the qcom,iommu-bfb-data property, and vice versa.
 	 */
-	if (!of_get_property(pdev->dev.of_node, BFB_REG_NODE_NAME, &nreg)) {
-		if (of_get_property(pdev->dev.of_node, BFB_DATA_NODE_NAME,
+	if (!of_get_property(pdev->dev.of_node, "qcom,iommu-bfb-regs", &nreg)) {
+		if (of_get_property(pdev->dev.of_node, "qcom,iommu-bfb-data",
 				    &nval))
 			return -EINVAL;
 		return 0;
 	}
 
-	if (!of_get_property(pdev->dev.of_node, BFB_DATA_NODE_NAME, &nval))
+	if (!of_get_property(pdev->dev.of_node, "qcom,iommu-bfb-data", &nval))
 		return -EINVAL;
 
 	if (nreg >= sizeof(bfb_settings->regs))
@@ -76,14 +68,14 @@ static int msm_iommu_parse_bfb_settings(struct platform_device *pdev,
 		return -ENOMEM;
 
 	ret = of_property_read_u32_array(pdev->dev.of_node,
-					 BFB_REG_NODE_NAME,
+					 "qcom,iommu-bfb-regs",
 					 bfb_settings->regs,
 					 nreg / sizeof(*bfb_settings->regs));
 	if (ret)
 		return ret;
 
 	ret = of_property_read_u32_array(pdev->dev.of_node,
-					 BFB_DATA_NODE_NAME,
+					 "qcom,iommu-bfb-data",
 					 bfb_settings->data,
 					 nval / sizeof(*bfb_settings->data));
 	if (ret)
@@ -123,34 +115,7 @@ static int __get_bus_vote_client(struct platform_device *pdev,
 static void __put_bus_vote_client(struct msm_iommu_drvdata *drvdata)
 {
 	msm_bus_scale_unregister_client(drvdata->bus_client);
-	drvdata->bus_client = 0;
 }
-
-#ifdef CONFIG_IOMMU_NON_SECURE
-static inline void get_secure_id(struct device_node *node,
-			  struct msm_iommu_drvdata *drvdata)
-{
-}
-
-static inline void get_secure_ctx(struct device_node *node,
-				  struct msm_iommu_ctx_drvdata *ctx_drvdata)
-{
-	ctx_drvdata->secure_context = 0;
-}
-#else
-static void get_secure_id(struct device_node *node,
-			  struct msm_iommu_drvdata *drvdata)
-{
-	of_property_read_u32(node, "qcom,iommu-secure-id", &drvdata->sec_id);
-}
-
-static void get_secure_ctx(struct device_node *node,
-			   struct msm_iommu_ctx_drvdata *ctx_drvdata)
-{
-	ctx_drvdata->secure_context =
-			of_property_read_bool(node, "qcom,secure-context");
-}
-#endif
 
 static int msm_iommu_parse_dt(struct platform_device *pdev,
 				struct msm_iommu_drvdata *drvdata)
@@ -188,7 +153,8 @@ static int msm_iommu_parse_dt(struct platform_device *pdev,
 		goto fail;
 
 	drvdata->sec_id = -1;
-	get_secure_id(pdev->dev.of_node, drvdata);
+	of_property_read_u32(pdev->dev.of_node, "qcom,iommu-secure-id",
+				&drvdata->sec_id);
 
 	r = platform_get_resource_byname(pdev, IORESOURCE_MEM, "clk_base");
 	if (r) {
@@ -297,19 +263,13 @@ static int __devinit msm_iommu_probe(struct platform_device *pdev)
 
 	drvdata->glb_base = drvdata->base;
 
-	if (of_get_property(pdev->dev.of_node, "vdd-supply", NULL)) {
+	drvdata->gdsc = devm_regulator_get(&pdev->dev, "vdd");
+	if (IS_ERR(drvdata->gdsc))
+		return PTR_ERR(drvdata->gdsc);
 
-		drvdata->gdsc = devm_regulator_get(&pdev->dev, "vdd");
-		if (IS_ERR(drvdata->gdsc))
-			return PTR_ERR(drvdata->gdsc);
-
-		drvdata->alt_gdsc = devm_regulator_get(&pdev->dev,
-							"qcom,alt-vdd");
-		if (IS_ERR(drvdata->alt_gdsc))
-			drvdata->alt_gdsc = NULL;
-	} else {
-		pr_debug("Warning: No regulator specified for IOMMU\n");
-	}
+	drvdata->alt_gdsc = devm_regulator_get(&pdev->dev, "qcom,alt-vdd");
+	if (IS_ERR(drvdata->alt_gdsc))
+		drvdata->alt_gdsc = NULL;
 
 	drvdata->pclk = devm_clk_get(&pdev->dev, "iface_clk");
 	if (IS_ERR(drvdata->pclk))
@@ -346,6 +306,8 @@ static int __devinit msm_iommu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, drvdata);
 
+	msm_iommu_sec_set_access_ops(&iommu_access_ops_v1);
+
 	pmon_info = msm_iommu_pm_alloc(&pdev->dev);
 	if (pmon_info != NULL) {
 		ret = msm_iommu_pmon_parse_dt(pdev, pmon_info);
@@ -354,7 +316,7 @@ static int __devinit msm_iommu_probe(struct platform_device *pdev)
 			pr_info("%s: pmon not available.\n", drvdata->name);
 		} else {
 			pmon_info->iommu.base = drvdata->base;
-			pmon_info->iommu.ops = msm_get_iommu_access_ops();
+			pmon_info->iommu.ops = &iommu_access_ops_v1;
 			pmon_info->iommu.hw_ops = iommu_pm_get_hw_ops_v1();
 			pmon_info->iommu.iommu_name = drvdata->name;
 			ret = msm_iommu_pm_iommu_register(pmon_info);
@@ -394,7 +356,8 @@ static int msm_iommu_ctx_parse_dt(struct platform_device *pdev,
 	int irq = 0, ret = 0;
 	u32 nsid;
 
-	get_secure_ctx(pdev->dev.of_node, ctx_drvdata);
+	ctx_drvdata->secure_context = of_property_read_bool(pdev->dev.of_node,
+							"qcom,secure-context");
 
 	if (ctx_drvdata->secure_context) {
 		irq = platform_get_irq(pdev, 1);
@@ -532,10 +495,6 @@ static int __init msm_iommu_driver_init(void)
 {
 	int ret;
 
-	if (!msm_soc_version_supports_iommu_v0()) {
-		msm_set_iommu_access_ops(&iommu_access_ops_v1);
-		msm_iommu_sec_set_access_ops(&iommu_access_ops_v1);
-	}
 	ret = platform_driver_register(&msm_iommu_driver);
 	if (ret != 0) {
 		pr_err("Failed to register IOMMU driver\n");

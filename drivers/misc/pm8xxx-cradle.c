@@ -6,7 +6,6 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/input.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
@@ -20,6 +19,7 @@
 #include <linux/of_gpio.h>
 #include <linux/wakelock.h>
 #include <mach/board_lge.h>
+#include <linux/zwait.h>
 
 #define HALL_DETECT_DELAY 200
 #define POUCH_DETECT_DELAY 100
@@ -45,8 +45,6 @@ struct pm8xxx_cradle {
 
 static struct workqueue_struct *cradle_wq;
 static struct pm8xxx_cradle *cradle;
-
-static struct input_dev  *cradle_input;
 
 static void boot_cradle_det_func(void)
 {
@@ -89,11 +87,6 @@ static void boot_cradle_det_func(void)
 	cradle->state = state;
 	wake_lock_timeout(&cradle->wake_lock, msecs_to_jiffies(3000));
 	switch_set_state(&cradle->sdev, cradle->state);
-
-        input_report_switch(cradle_input, SW_LID, 
-                cradle->state == SMARTCOVER_POUCH_OPENED ? 0 : 1);
-        input_sync(cradle_input);
-
 }
 
 #if defined CONFIG_MACH_MSM8974_VU3_KR
@@ -211,9 +204,6 @@ static void pm8xxx_pouch_work_func(struct work_struct *work)
 		wake_lock_timeout(&cradle->wake_lock, msecs_to_jiffies(3000));
 		switch_set_state(&cradle->sdev, cradle->state);
 		printk("%s : [Cradle] pouch value is %d\n", __func__ , state);
-                input_report_switch(cradle_input, SW_LID, 
-                        cradle->state == SMARTCOVER_POUCH_OPENED ? 0 : 1);
-                input_sync(cradle_input);
 	}
 	else {
 		spin_unlock_irqrestore(&cradle->lock, flags);
@@ -524,6 +514,20 @@ static int __devinit pm8xxx_cradle_probe(struct platform_device *pdev)
 	}
 #endif
 	platform_set_drvdata(pdev, cradle);
+
+#ifdef CONFIG_ZERO_WAIT
+	if (cradle->pdata->hallic_pouch_detect_pin > 0)
+		zw_irqs_info_register(hall_pouch_gpio_irq, 1);
+
+#if defined CONFIG_MACH_MSM8974_VU3_KR
+	if (cradle->pdata->hallic_pen_detect_pin > 0)
+		zw_irqs_info_register(hall_pen_gpio_irq, 1);
+#else
+	if (cradle->pdata->hallic_camera_detect_pin > 0)
+		zw_irqs_info_register(hall_camera_gpio_irq, 1);
+#endif
+#endif /* CONFIG_ZERO_WAIT */
+
 	return 0;
 
 err_request_irq:
@@ -546,6 +550,26 @@ err_switch_dev_register:
 static int __devexit pm8xxx_cradle_remove(struct platform_device *pdev)
 {
 	struct pm8xxx_cradle *cradle = platform_get_drvdata(pdev);
+
+#ifdef CONFIG_ZERO_WAIT
+	if (cradle->pdata->hallic_pouch_detect_pin > 0) {
+		zw_irqs_info_unregister(
+			gpio_to_irq(cradle->pdata->hallic_pouch_detect_pin));
+	}
+
+#if defined CONFIG_MACH_MSM8974_VU3_KR
+	if (cradle->pdata->hallic_pen_detect_pin > 0) {
+		zw_irqs_info_unregister(
+			gpio_to_irq(cradle->pdata->hallic_pen_detect_pin));
+	}
+#else
+	if (cradle->pdata->hallic_camera_detect_pin > 0) {
+		zw_irqs_info_unregister(
+			gpio_to_irq(cradle->pdata->hallic_camera_detect_pin));
+	}
+#endif
+#endif /* CONFIG_ZERO_WAIT */
+
 	cancel_delayed_work_sync(&cradle->pouch_work);
 #if defined CONFIG_MACH_MSM8974_VU3_KR
 	cancel_delayed_work_sync(&cradle->pen_work);
@@ -596,40 +620,10 @@ static struct platform_driver pm8xxx_cradle_driver = {
 	},
 };
 
-static int cradle_input_device_create(void){
-        int err = 0;
-
-        cradle_input = input_allocate_device();
-        if (!cradle_input) {
-                err = -ENOMEM;
-                goto exit;
-        }
-
-        cradle_input->name = "smartcover";
-        cradle_input->phys = "/dev/input/smartcover";
-
-        set_bit(EV_SW, cradle_input->evbit);
-        set_bit(SW_LID, cradle_input->swbit);
-
-        err = input_register_device(cradle_input);
-        if (err) {
-                goto exit_free;
-        }
-        return 0;
-
-exit_free:
-        input_free_device(cradle_input);
-        cradle_input = NULL;
-exit:
-        return err;
-
-}
-
 static int __init pm8xxx_cradle_init(void)
 {
-        cradle_input_device_create();
-        cradle_wq = create_singlethread_workqueue("cradle_wq");
-        printk(KERN_ERR "cradle init \n");
+	cradle_wq = create_singlethread_workqueue("cradle_wq");
+       printk(KERN_ERR "cradle init \n");
 	if (!cradle_wq)
 		return -ENOMEM;
 	return platform_driver_register(&pm8xxx_cradle_driver);
@@ -640,7 +634,6 @@ static void __exit pm8xxx_cradle_exit(void)
 {
 	if (cradle_wq)
 		destroy_workqueue(cradle_wq);
-        input_unregister_device(cradle_input);
 	platform_driver_unregister(&pm8xxx_cradle_driver);
 }
 module_exit(pm8xxx_cradle_exit);

@@ -114,11 +114,13 @@ EXPORT_SYMBOL(system_state);
  */
 #define MAX_INIT_ARGS CONFIG_INIT_ENV_ARG_LIMIT
 #define MAX_INIT_ENVS CONFIG_INIT_ENV_ARG_LIMIT
-/*                                                                         */
+
 #ifndef CONFIG_MACH_MSM8974_G2_KDDI
+/*LGE_CHANGE_S, hyeongjin.kim@lge.com, 2012-03-29, HiddenMenu SMPL Counter */
+/*LGE_UPDATE_S,jongbum.kim, 20111024 -->[*/
 static void smpl_count(void);
-/*                             */
-/*                                                                         */
+/*LGE_UPDATE_E,jongbum.kim <--]*/
+/*LGE_CHANGE_E, hyeongjin.kim@lge.com, 2012-03-29, HiddenMenu SMPL Counter */
 #endif
 extern void time_init(void);
 /* Default late time init is NULL. archs can override this later. */
@@ -392,9 +394,11 @@ static noinline void __init_refok rest_init(void)
 	/* Call into cpu_idle with preempt disabled */
 	cpu_idle();
 }
-/*                                                                         */
+
 #ifndef CONFIG_MACH_MSM8974_G2_KDDI
-//                    
+/*LGE_CHANGE_S, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
+/*LGE_UPDATE_S, jongbum.kim, 20111024 -->[*/
+//#ifdef CONFIG_LGE_PM
 #define PWR_ON_EVENT_KEYPAD			0x80
 #define PWR_ON_EVENT_CABLE			0x40
 #define PWR_ON_EVENT_PON1			0x20
@@ -456,10 +460,11 @@ static void smpl_count(void)
         printk("[SMPL_CNT] ===> not smpl boot!!!!!\n");
 	}
 }
-/*                             */
-/*                                                                          */
+/*LGE_UPDATE_E,jongbum.kim <--]*/
+/* LGE_CHANGE_E, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
 /* Check for early params. */
 #endif
+
 static int __init do_early_param(char *param, char *val)
 {
 	const struct obs_kernel_param *p;
@@ -634,6 +639,9 @@ asmlinkage void __init start_kernel(void)
 				 "enabled early\n");
 	early_boot_irqs_disabled = false;
 	local_irq_enable();
+
+	/* Interrupts are enabled now so all GFP allocations are safe. */
+	gfp_allowed_mask = __GFP_BITS_MASK;
 
 	kmem_cache_init_late();
 
@@ -923,10 +931,6 @@ static int __init kernel_init(void * unused)
 	 * Wait until kthreadd is all set-up.
 	 */
 	wait_for_completion(&kthreadd_done);
-
-	/* Now the scheduler is fully set up and can do blocking allocations */
-	gfp_allowed_mask = __GFP_BITS_MASK;
-
 	/*
 	 * init can allocate pages on any node
 	 */
@@ -972,11 +976,13 @@ static int __init kernel_init(void * unused)
 	 * we're essentially up and running. Get rid of the
 	 * initmem segments and start the user-mode stuff..
 	 */
-/*                                                                         */
+
 #ifndef CONFIG_MACH_MSM8974_G2_KDDI
+/*LGE_CHANGE_S, hyeongjin.kim@lge.com, 2012-03-29, HiddenMenu SMPL Counter */
+/*LGE_UPDATE_S, jongbum.kim, 20111024 -->[*/
 	smpl_count();
-/*                              */
-/*                                                                         */
+/*LGE_UPDATE_E, jongbum.kim <--]*/
+/*LGE_CHANGE_E, hyeongjin.kim@lge.com, 2012-03-29, HiddenMenu SMPL Counter */
 #endif
 
 	init_post();

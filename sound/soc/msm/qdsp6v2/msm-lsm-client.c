@@ -216,7 +216,7 @@ static int msm_lsm_ioctl(struct snd_pcm_substream *substream,
 			if (!ret)
 				pr_debug("%s: LSM client session stopped %d\n",
 					 __func__, ret);
-				prtd->lsm_client->started = false;
+			prtd->lsm_client->started = false;
 		}
 		break;
 

@@ -58,14 +58,6 @@ struct mdss_hw mdss_dsi1_hw = {
 
 void mdss_dsi_ctrl_init(struct mdss_dsi_ctrl_pdata *ctrl)
 {
-	if (ctrl->shared_pdata.broadcast_enable)
-		if (ctrl->panel_data.panel_info.pdest
-					== DISPLAY_1) {
-			pr_debug("%s: Broadcast mode enabled.\n",
-				 __func__);
-			left_ctrl_pdata = ctrl;
-		}
-
 	if (ctrl->panel_data.panel_info.pdest == DISPLAY_1) {
 		mdss_dsi0_hw.ptr = (void *)(ctrl);
 		ctrl->dsi_hw = &mdss_dsi0_hw;
@@ -237,7 +229,7 @@ static int mdss_dsi_generic_lwrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	struct dsi_ctrl_hdr *dchdr;
 	char *bp;
 	u32 *hp;
-	int i, len = 0;
+	int i, len;
 
 	dchdr = &cm->dchdr;
 	bp = mdss_dsi_buf_reserve_hdr(dp, DSI_HOST_HDR_SIZE);
@@ -268,9 +260,8 @@ static int mdss_dsi_generic_lwrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	len += DSI_HOST_HDR_SIZE;
 
-	return len;
+	return dp->len;
 }
 
 /*
@@ -313,7 +304,8 @@ static int mdss_dsi_generic_swrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	}
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 /*
@@ -356,7 +348,7 @@ static int mdss_dsi_generic_read(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	}
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+	return dp->len;	/* 4 bytes */
 }
 
 /*
@@ -367,7 +359,7 @@ static int mdss_dsi_dcs_lwrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	struct dsi_ctrl_hdr *dchdr;
 	char *bp;
 	u32 *hp;
-	int i, len = 0;
+	int i, len;
 
 	dchdr = &cm->dchdr;
 	bp = mdss_dsi_buf_reserve_hdr(dp, DSI_HOST_HDR_SIZE);
@@ -402,8 +394,7 @@ static int mdss_dsi_dcs_lwrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
 
-	len += DSI_HOST_HDR_SIZE;
-	return len;
+	return dp->len;
 }
 
 /*
@@ -437,7 +428,7 @@ static int mdss_dsi_dcs_swrite(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	*hp |= DSI_HDR_DATA2(0);
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+	return dp->len;
 }
 
 /*
@@ -468,7 +459,8 @@ static int mdss_dsi_dcs_swrite1(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	*hp |= DSI_HDR_DATA2(cm->payload[1]);	/* parameter */
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;
 }
 /*
  * mipi dsi dcs read with 0 parameters
@@ -498,7 +490,8 @@ static int mdss_dsi_dcs_read(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	*hp |= DSI_HDR_DATA2(0);
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_cm_on(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -516,7 +509,8 @@ static int mdss_dsi_cm_on(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_cm_off(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -534,7 +528,8 @@ static int mdss_dsi_cm_off(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_peripheral_on(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -552,7 +547,8 @@ static int mdss_dsi_peripheral_on(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_peripheral_off(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -570,7 +566,8 @@ static int mdss_dsi_peripheral_off(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_set_max_pktsize(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -596,7 +593,8 @@ static int mdss_dsi_set_max_pktsize(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 	*hp |= DSI_HDR_DATA2(cm->payload[1]);
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_null_pkt(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -616,7 +614,8 @@ static int mdss_dsi_null_pkt(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 static int mdss_dsi_blank_pkt(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
@@ -636,7 +635,8 @@ static int mdss_dsi_blank_pkt(struct dsi_buf *dp, struct dsi_cmd_desc *cm)
 		*hp |= DSI_HDR_LAST;
 
 	mdss_dsi_buf_push(dp, DSI_HOST_HDR_SIZE);
-	return DSI_HOST_HDR_SIZE; /* 4 bytes */
+
+	return dp->len;	/* 4 bytes */
 }
 
 /*
@@ -858,6 +858,13 @@ void mdss_dsi_host_init(struct mipi_panel_info *pinfo,
 		MIPI_OUTP(ctrl_pdata->ctrl_base + 0x3C, 0x94000000);
 	else
 		MIPI_OUTP(ctrl_pdata->ctrl_base + 0x3C, 0x14000000);
+
+	if (ctrl_pdata->shared_pdata.broadcast_enable)
+		if (pdata->panel_info.pdest == DISPLAY_1) {
+			pr_debug("%s: Broadcast mode enabled.\n",
+				 __func__);
+			left_ctrl_pdata = ctrl_pdata;
+		}
 
 	data = 0;
 	if (pinfo->te_sel)
@@ -1091,40 +1098,6 @@ void mdss_dsi_cmd_bta_sw_trigger(struct mdss_panel_data *pdata)
 	pr_debug("%s: BTA done, status = %d\n", __func__, status);
 }
 
-static char set_tear_on[2] = {0x35, 0x00};
-static struct dsi_cmd_desc dsi_tear_on_cmd = {
-	{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(set_tear_on)}, set_tear_on};
-
-static char set_tear_off[2] = {0x34, 0x00};
-static struct dsi_cmd_desc dsi_tear_off_cmd = {
-	{DTYPE_DCS_WRITE, 1, 0, 0, 0, sizeof(set_tear_off)}, set_tear_off};
-
-void mdss_dsi_set_tear_on(struct mdss_dsi_ctrl_pdata *ctrl)
-{
-	struct dcs_cmd_req cmdreq;
-
-	cmdreq.cmds = &dsi_tear_on_cmd;
-	cmdreq.cmds_cnt = 1;
-	cmdreq.flags = CMD_REQ_COMMIT;
-	cmdreq.rlen = 0;
-	cmdreq.cb = NULL;
-
-	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
-}
-
-void mdss_dsi_set_tear_off(struct mdss_dsi_ctrl_pdata *ctrl)
-{
-	struct dcs_cmd_req cmdreq;
-
-	cmdreq.cmds = &dsi_tear_off_cmd;
-	cmdreq.cmds_cnt = 1;
-	cmdreq.flags = CMD_REQ_COMMIT;
-	cmdreq.rlen = 0;
-	cmdreq.cb = NULL;
-
-	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
-}
-
 int mdss_dsi_cmd_reg_tx(u32 data,
 			unsigned char *ctrl_base)
 {
@@ -1153,6 +1126,7 @@ int mdss_dsi_cmd_reg_tx(u32 data,
 	return 4;
 }
 
+
 static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 					struct dsi_buf *tp);
 
@@ -1178,49 +1152,6 @@ static void oled_hrtimer_delay(int delay_in_ms)
 	hrtimer_cancel(&oled_hrtimer);
 }
 #endif
-
-static int mdss_dsi_cmds2buf_tx(struct mdss_dsi_ctrl_pdata *ctrl,
-			struct dsi_cmd_desc *cmds, int cnt)
-{
-	struct dsi_buf *tp;
-	struct dsi_cmd_desc *cm;
-	struct dsi_ctrl_hdr *dchdr;
-	int len, tot = 0;
-
-	tp = &ctrl->tx_buf;
-	mdss_dsi_buf_init(tp);
-	cm = cmds;
-	len = 0;
-	while (cnt--) {
-		dchdr = &cm->dchdr;
-		mdss_dsi_buf_reserve(tp, len);
-		len = mdss_dsi_cmd_dma_add(tp, cm);
-		if (!len) {
-			pr_err("%s: failed to call cmd_dma_add\n", __func__);
-			return -EINVAL;
-		}
-		tot += len;
-		if (dchdr->last) {
-			tp->data = tp->start; /* begin of buf */
-			mdss_dsi_enable_irq(ctrl, DSI_CMD_TERM);
-			len = mdss_dsi_cmd_dma_tx(ctrl, tp);
-			if (IS_ERR_VALUE(len)) {
-				mdss_dsi_disable_irq(ctrl, DSI_CMD_TERM);
-				pr_err("%s: failed to call cmd_dma_tx for cmd = 0x%x\n",
-					__func__,  cmds->payload[0]);
-				return -EINVAL;
-			}
-			if (dchdr->wait)
-				usleep(dchdr->wait * 1000);
-
-			mdss_dsi_buf_init(tp);
-			len = 0;
-		}
-		cm++;
-	}
-	return tot;
-}
-
 /*
  * mdss_dsi_cmds_tx:
  * thread context only
@@ -1228,8 +1159,11 @@ static int mdss_dsi_cmds2buf_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 int mdss_dsi_cmds_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 		struct dsi_cmd_desc *cmds, int cnt)
 {
+	struct dsi_buf *tp;
+	struct dsi_cmd_desc *cm;
+	struct dsi_ctrl_hdr *dchdr;
 	u32 dsi_ctrl, data;
-	int video_mode, ret = 0;
+	int i, video_mode;
 #ifdef CONFIG_OLED_SUPPORT
 #ifdef LGE_HRTIMER_OLED_PATCH
 #else
@@ -1238,8 +1172,6 @@ int mdss_dsi_cmds_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	int delay_count;
 #endif
 #endif
-	u32 left_dsi_ctrl = 0;
-	bool left_ctrl_restore = false;
 
 	if (ctrl->shared_pdata.broadcast_enable) {
 		if (ctrl->ndx == DSI_CTRL_0) {
@@ -1252,15 +1184,13 @@ int mdss_dsi_cmds_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	if (ctrl->shared_pdata.broadcast_enable) {
 		if ((ctrl->ndx == DSI_CTRL_1)
 		  && (left_ctrl_pdata != NULL)) {
-			left_dsi_ctrl = MIPI_INP(left_ctrl_pdata->ctrl_base
+			dsi_ctrl = MIPI_INP(left_ctrl_pdata->ctrl_base
 								+ 0x0004);
-			video_mode =
-				left_dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
+			video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
 			if (video_mode) {
-				data = left_dsi_ctrl | 0x04; /* CMD_MODE_EN */
+				data = dsi_ctrl | 0x04; /* CMD_MODE_EN */
 				MIPI_OUTP(left_ctrl_pdata->ctrl_base + 0x0004,
 						data);
-				left_ctrl_restore = true;
 			}
 		}
 	}
@@ -1277,16 +1207,46 @@ int mdss_dsi_cmds_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 		MIPI_OUTP((ctrl->ctrl_base) + 0x0004, data);
 	}
 
-	ret = mdss_dsi_cmds2buf_tx(ctrl, cmds, cnt);
-	if (IS_ERR_VALUE(ret)) {
-		pr_err("%s: failed to call\n",
-			__func__);
-		cnt = -EINVAL;
-	}
+	tp = &ctrl->tx_buf;
+	cm = cmds;
+	for (i = 0; i < cnt; i++) {
+		mdss_dsi_enable_irq(ctrl, DSI_CMD_TERM);
+		mdss_dsi_buf_init(tp);
+		mdss_dsi_cmd_dma_add(tp, cm);
+		mdss_dsi_cmd_dma_tx(ctrl, tp);
+		dchdr = &cm->dchdr;
+#ifdef CONFIG_OLED_SUPPORT
+#ifdef LGE_HRTIMER_OLED_PATCH
+	      if(dchdr->wait) {
+		     printk("[Zee][OLED] mipi_dsi_tx(0x%X) start (target delay=%dms)\n", cm->payload[0], (int)dchdr->wait);
 
-	if (left_ctrl_restore)
-		MIPI_OUTP(left_ctrl_pdata->ctrl_base + 0x0004,
-					left_dsi_ctrl); /*restore */
+		     if(dchdr->wait > 5)
+			    oled_hrtimer_delay(dchdr->wait);
+		     else
+			    mdelay(dchdr->wait);
+
+		     printk("[Zee][OLED] mipi_dsi_tx(0x%X) finish (target delay=%dms)\n", cm->payload[0], (int)dchdr->wait);
+	      }
+#else
+		if(dchdr->wait) {
+			delay_count = 0;
+			do_gettimeofday(&tv_start);
+			do {
+				mdelay(1);
+				do_gettimeofday(&tv_end);
+				tv_diff = ((tv_end.tv_sec - tv_start.tv_sec) * 1000000) // sec
+						+ (tv_end.tv_usec - tv_start.tv_usec);			// usec
+				delay_count++;
+			} while(dchdr->wait * 1000 > tv_diff);
+			pr_info("%s: 0x%X needs %d(ms) delay and real delay is %ld(us), delay_count(%d).\n", __func__, cm->payload[0], (int)dchdr->wait, tv_diff, delay_count);
+		}
+#endif
+#else
+		if (dchdr->wait)
+			usleep(dchdr->wait * 1000);
+#endif
+		cm++;
+	}
 
 	if (video_mode)
 		MIPI_OUTP((ctrl->ctrl_base) + 0x0004,
@@ -1381,49 +1341,13 @@ static struct dsi_cmd_desc pkt_size_cmd = {
 int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_cmd_desc *cmds, int rlen, u32 rx_flags)
 {
-	int cnt, len, diff, pkt_size, ret = 0;
+	int cnt, len, diff, pkt_size;
 	struct dsi_buf *tp, *rp;
 	int no_max_pkt_size;
 	char cmd;
-	u32 dsi_ctrl, data;
+	u32 dsi_ctrl;
+	u32 data;
 	int video_mode;
-	u32 left_dsi_ctrl = 0;
-	bool left_ctrl_restore = false;
-
-	if (ctrl->shared_pdata.broadcast_enable) {
-		if (ctrl->ndx == DSI_CTRL_0) {
-			pr_debug("%s: Broadcast mode. 1st ctrl\n",
-				 __func__);
-			return 0;
-		}
-	}
-
-	if (ctrl->shared_pdata.broadcast_enable) {
-		if ((ctrl->ndx == DSI_CTRL_1)
-		  && (left_ctrl_pdata != NULL)) {
-			left_dsi_ctrl = MIPI_INP(left_ctrl_pdata->ctrl_base
-								+ 0x0004);
-			video_mode = left_dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
-			if (video_mode) {
-				data = left_dsi_ctrl | 0x04; /* CMD_MODE_EN */
-				MIPI_OUTP(left_ctrl_pdata->ctrl_base + 0x0004,
-						data);
-				left_ctrl_restore = true;
-			}
-		}
-	}
-
-	/* turn on cmd mode
-	* for video mode, do not send cmds more than
-	* one pixel line, since it only transmit it
-	* during BLLP.
-	*/
-	dsi_ctrl = MIPI_INP((ctrl->ctrl_base) + 0x0004);
-	video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
-	if (video_mode) {
-		data = dsi_ctrl | 0x04; /* CMD_MODE_EN */
-		MIPI_OUTP((ctrl->ctrl_base) + 0x0004, data);
-	}
 
 	no_max_pkt_size = rx_flags & CMD_REQ_NO_MAX_PKT_SIZE;
 	if (no_max_pkt_size)
@@ -1451,6 +1375,13 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 		cnt = len + 6; /* 4 bytes header + 2 bytes crc */
 	}
 
+	dsi_ctrl = MIPI_INP((ctrl->ctrl_base) + 0x0004);
+	video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
+	if (video_mode) {
+		data = dsi_ctrl | 0x04; /* CMD_MODE_EN */
+		MIPI_OUTP((ctrl->ctrl_base) + 0x0004, data);
+	}
+
 	tp = &ctrl->tx_buf;
 	rp = &ctrl->rx_buf;
 
@@ -1458,44 +1389,19 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 		/* packet size need to be set at every read */
 		pkt_size = len;
 		max_pktsize[0] = pkt_size;
-		mdss_dsi_buf_init(tp);
-		ret = mdss_dsi_cmd_dma_add(tp, &pkt_size_cmd);
-		if (!ret) {
-			pr_err("%s: failed to call\n",
-				__func__);
-			rp->len = 0;
-			goto end;
-		}
 		mdss_dsi_enable_irq(ctrl, DSI_CMD_TERM);
-		ret = mdss_dsi_cmd_dma_tx(ctrl, tp);
-		if (IS_ERR_VALUE(ret)) {
-			mdss_dsi_disable_irq(ctrl, DSI_CMD_TERM);
-			pr_err("%s: failed to call\n",
-				__func__);
-			rp->len = 0;
-			goto end;
-		}
+		mdss_dsi_buf_init(tp);
+		mdss_dsi_cmd_dma_add(tp, &pkt_size_cmd);
+		mdss_dsi_cmd_dma_tx(ctrl, tp);
 		pr_debug("%s: Max packet size sent\n", __func__);
-	}
-	mdss_dsi_buf_init(tp);
-	ret = mdss_dsi_cmd_dma_add(tp, cmds);
-	if (!ret) {
-		pr_err("%s: failed to call cmd_dma_add for cmd = 0x%x\n",
-			__func__,  cmds->payload[0]);
-		rp->len = 0;
-		goto end;
 	}
 
 	mdss_dsi_enable_irq(ctrl, DSI_CMD_TERM);
+	mdss_dsi_buf_init(tp);
+	mdss_dsi_cmd_dma_add(tp, cmds);
+
 	/* transmit read comamnd to client */
-	ret = mdss_dsi_cmd_dma_tx(ctrl, tp);
-	if (IS_ERR_VALUE(ret)) {
-		mdss_dsi_disable_irq(ctrl, DSI_CMD_TERM);
-		pr_err("%s: failed to call\n",
-			__func__);
-		rp->len = 0;
-		goto end;
-	}
+	mdss_dsi_cmd_dma_tx(ctrl, tp);
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
@@ -1512,6 +1418,9 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	mdss_dsi_cmd_dma_rx(ctrl, rp, cnt);
 
+	if (video_mode)
+		MIPI_OUTP((ctrl->ctrl_base) + 0x0004, dsi_ctrl); /* restore */
+
 	if (no_max_pkt_size) {
 		/*
 		 * remove extra 2 bytes from previous
@@ -1527,7 +1436,7 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 	switch (cmd) {
 	case DTYPE_ACK_ERR_RESP:
 		pr_debug("%s: rx ACK_ERR_PACLAGE\n", __func__);
-		rp->len = 0;
+		break;
 	case DTYPE_GEN_READ1_RESP:
 	case DTYPE_DCS_READ1_RESP:
 		mdss_dsi_short_read1_resp(rp);
@@ -1543,16 +1452,9 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 		rp->len -= diff; /* align bytes */
 		break;
 	default:
-		pr_warning("%s:Invalid response cmd\n", __func__);
-		rp->len = 0;
+		pr_debug("%s: Unknown cmd received\n", __func__);
+		break;
 	}
-end:
-	if (left_ctrl_restore)
-		MIPI_OUTP(left_ctrl_pdata->ctrl_base + 0x0004,
-					left_dsi_ctrl); /*restore */
-	if (video_mode)
-		MIPI_OUTP((ctrl->ctrl_base) + 0x0004,
-					dsi_ctrl); /* restore */
 
 	return rp->len;
 }
@@ -1562,7 +1464,7 @@ end:
 static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 					struct dsi_buf *tp)
 {
-	int len, ret = 0;
+	int len;
 	int domain = MDSS_IOMMU_DOMAIN_UNSECURE;
 	char *bp;
 	unsigned long size, addr;
@@ -1607,18 +1509,16 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 	MIPI_OUTP((ctrl->ctrl_base) + 0x090, 0x01);	/* trigger */
 	wmb();
 
-	ret = wait_for_completion_timeout(&ctrl->dma_comp,
-				msecs_to_jiffies(DMA_TX_TIMEOUT));
-	if (ret == 0)
-		ret = -ETIMEDOUT;
-	else
-		ret = tp->len;
+	if (!wait_for_completion_timeout(&ctrl->dma_comp,
+				msecs_to_jiffies(DMA_TX_TIMEOUT))) {
+		pr_err("%s: dma timeout error\n", __func__);
+	}
 
 	if (is_mdss_iommu_attached())
 		msm_iommu_unmap_contig_buffer(addr,
 			mdss_get_iommu_domain(domain), 0, size);
 
-	return ret;
+	return tp->len;
 }
 
 static int mdss_dsi_cmd_dma_rx(struct mdss_dsi_ctrl_pdata *ctrl,
@@ -1674,10 +1574,8 @@ void mdss_dsi_wait4video_done(struct mdss_dsi_ctrl_pdata *ctrl)
 	data &= ~DSI_INTR_VIDEO_DONE_MASK;
 	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, data);
 #else
-	/* DSI_INTL_CTRL */
-	data = MIPI_INP((ctrl->ctrl_base) + 0x0110);
+	data = MIPI_INP((ctrl->ctrl_base) + 0x0004);
 	data |= DSI_INTR_VIDEO_DONE_MASK;
-
 	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, data);
 
 	spin_lock_irqsave(&ctrl->mdp_lock, flag);
@@ -1688,7 +1586,7 @@ void mdss_dsi_wait4video_done(struct mdss_dsi_ctrl_pdata *ctrl)
 	wait_for_completion_timeout(&ctrl->video_comp,
 			msecs_to_jiffies(VSYNC_PERIOD * 4));
 
-	data = MIPI_INP((ctrl->ctrl_base) + 0x0110);
+	data = MIPI_INP((ctrl->ctrl_base) + 0x0004);
 	data &= ~DSI_INTR_VIDEO_DONE_MASK;
 	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, data);
 #endif
@@ -1716,7 +1614,6 @@ void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	unsigned long flags;
 	int need_wait = 0;
-	uint32_t timeout = 1;
 
 	pr_debug("%s: start pid=%d\n",
 				__func__, current->pid);
@@ -1729,10 +1626,7 @@ void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 		/* wait until DMA finishes the current job */
 		pr_debug("%s: pending pid=%d\n",
 				__func__, current->pid);
-		timeout = wait_for_completion_timeout(&ctrl->mdp_comp,
-			msecs_to_jiffies(2000));
-		if (!timeout)
-			pr_warn("%s: timedout\n", __func__);
+		wait_for_completion(&ctrl->mdp_comp);
 	}
 	pr_debug("%s: done pid=%d\n",
 				__func__, current->pid);
@@ -1780,14 +1674,6 @@ void mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp)
 	if (req == NULL)
 		goto need_lock;
 
-	/*
-	 * mdss interrupt is generated in mdp core clock domain
-	 * mdp clock need to be enabled to receive dsi interrupt
-	 * also, axi bus bandwidth need since dsi controller will
-	 * fetch dcs commands from axi bus
-	 */
-	mdss_bus_bandwidth_ctrl(1);
-
 	pr_debug("%s:  from_mdp=%d pid=%d\n", __func__, from_mdp, current->pid);
 	mdss_dsi_clk_ctrl(ctrl, 1);
 
@@ -1811,7 +1697,6 @@ void mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp)
 		mdss_dsi_cmdlist_tx(ctrl, req);
 
 	mdss_dsi_clk_ctrl(ctrl, 0);
-	mdss_bus_bandwidth_ctrl(0);
 
 need_lock:
 

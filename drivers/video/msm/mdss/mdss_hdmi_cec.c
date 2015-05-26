@@ -364,7 +364,7 @@ static int hdmi_cec_msg_send(struct hdmi_cec_ctrl *cec_ctrl,
 	DSS_REG_W(io, HDMI_CEC_CTRL, BIT(0) | BIT(1) |
 		((msg->frame_size & 0x1F) << 4) | BIT(9));
 
-	if (!wait_for_completion_timeout(
+	if (!wait_for_completion_interruptible_timeout(
 		&cec_ctrl->cec_msg_wr_done, HZ)) {
 		DEV_ERR("%s: timedout", __func__);
 		hdmi_cec_dump_msg(cec_ctrl, msg);
@@ -751,7 +751,7 @@ static DEVICE_ATTR(enable, S_IRUGO | S_IWUSR, hdmi_rda_cec_enable,
 	hdmi_wta_cec_enable);
 static DEVICE_ATTR(enable_compliance, S_IRUGO | S_IWUSR,
 	hdmi_rda_cec_enable_compliance, hdmi_wta_cec_enable_compliance);
-static DEVICE_ATTR(logical_addr, S_IRUSR | S_IWUSR,
+static DEVICE_ATTR(logical_addr, S_IRUGO | S_IWUSR,
 	hdmi_rda_cec_logical_addr, hdmi_wta_cec_logical_addr);
 static DEVICE_ATTR(rd_msg, S_IRUGO, hdmi_rda_cec_msg,	NULL);
 static DEVICE_ATTR(wr_msg, S_IWUSR, NULL, hdmi_wta_cec_msg);

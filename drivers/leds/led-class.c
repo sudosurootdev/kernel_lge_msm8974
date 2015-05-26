@@ -18,6 +18,7 @@
 #include <linux/timer.h>
 #include <linux/err.h>
 #include <linux/ctype.h>
+#include <linux/zwait.h>
 #include <linux/leds.h>
 #include "leds.h"
 #if defined(CONFIG_MACH_LGE)
@@ -74,7 +75,7 @@ static ssize_t led_brightness_store(struct device *dev,
 		ret = count;
 
 		if (state == LED_OFF)
-			led_trigger_set_default(led_cdev);
+			led_trigger_remove(led_cdev);
 		led_set_brightness(led_cdev, state);
 	}
 
@@ -280,10 +281,15 @@ static ssize_t set_pattern(struct device *dev, struct device_attribute *attr, co
 	}
 	ret = size;
 
+	if (zw_no_charger_in_zwait())
+		return ret;
+
 	if(lge_get_boot_mode() <= LGE_BOOT_MODE_CHARGERLOGO) {
 		printk("[RGB LED] pattern_num=%d\n", pattern_num);
+#ifndef CONFIG_MACH_MSM8974_Z_KR	
 		if (!pattern_num || pattern_num == 35 || pattern_num == 36 || pattern_num == 1035)
 			set_kpdbl_pattern(pattern_num);
+#endif
 		if ((pattern_num != 35)&&(pattern_num != 36))
 			change_led_pattern(pattern_num);
 	}

@@ -30,12 +30,6 @@
 			label = "secure_mem";
 		};
 
-		adsp_mem: adsp_region {
-			linux,contiguous-region;
-			reg = <0 0x2000000>;
-			label = "adsp_mem";
-		};
-
 		qsecom_mem: qsecom_region {
 			linux,contiguous-region;
 			reg = <0 0x780000>;
@@ -387,10 +381,6 @@
 		compatible = "qcom,msm-compr-dsp";
 	};
 
-	qcom,msm-compress-dsp {
-		compatible = "qcom,msm-compress-dsp";
-	};
-
 	qcom,msm-voip-dsp {
 		compatible = "qcom,msm-voip-dsp";
 	};
@@ -656,24 +646,6 @@
 		compatible = "qcom,bcl";
 	};
 
-	rmtfs_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd80000 0x00180000>;
-		reg-names = "rmtfs";
-	};
-
-	dsp_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd60000 0x00020000>;
-		reg-names = "rfsa_dsp";
-	};
-
-	mdm_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd60000 0x00020000>;
-		reg-names = "rfsa_mdm";
-	};
-
 	sdcc1: qcom,sdcc@f9824000 {
 		cell-index = <1>; /* SDC1 eMMC slot */
 		compatible = "qcom,msm-sdcc";
@@ -875,7 +847,6 @@
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
 		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_1_in 1 0>;
 		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
-		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_1_in 3 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
@@ -946,12 +917,6 @@
                 compatible = "qcom,msm-rng";
                 reg = <0xf9bff000 0x200>;
                 qcom,msm-rng-iface-clk;
-                qcom,msm-bus,name = "msm-rng-noc";
-                qcom,msm-bus,num-cases = <2>;
-                qcom,msm-bus,num-paths = <1>;
-                qcom,msm-bus,vectors-KBps =
-                                <1 618 0 0>,
-                                <1 618 0 800>;
 	};
 
 	qcom,tz-log@fe805720 {
@@ -1045,12 +1010,6 @@
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
 				<55 512 3936000 393600>;
-	};
-
-	cpu-pmu {
-		compatible = "arm,cortex-a7-pmu";
-		qcom,irq-is-percpu;
-		interrupts = <1 7 0xf00>;
 	};
 };
 

@@ -26,7 +26,7 @@
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/qpnp/power-on.h>
 #include <linux/mfd/pm8xxx/batterydata-lib.h>
-#ifdef CONFIG_MACH_MSM8974_VU3_KR
+#if defined(CONFIG_MACH_MSM8974_VU3_KR) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
 #define EXTERNAL_FUELGAUGE
 #endif
 /* BMS Register Offsets */
@@ -223,11 +223,11 @@ static struct of_device_id qpnp_bms_match_table[] = {
 	{ .compatible = QPNP_BMS_DEV_NAME },
 	{}
 };
-
+#ifndef EXTERNAL_FUELGAUGE
 static char *qpnp_bms_supplicants[] = {
 	"battery"
 };
-
+#endif
 static enum power_supply_property msm_bms_power_props[] = {
 #ifndef EXTERNAL_FUELGAUGE
 	POWER_SUPPLY_PROP_CAPACITY,
@@ -470,7 +470,7 @@ static int get_battery_current(struct qpnp_bms_chip *chip, int *result_ua)
 	unlock_output_data(chip);
 	mutex_unlock(&chip->bms_output_lock);
 
-	pr_info("vsense_uv=%duV\n", vsense_uv);
+	pr_debug("vsense_uv=%duV\n", vsense_uv);
 	/* cast for signed division */
 	temp_current = div_s64((vsense_uv * 1000000LL),
 				(int)chip->r_sense_uohm);
@@ -480,7 +480,7 @@ static int get_battery_current(struct qpnp_bms_chip *chip, int *result_ua)
 		pr_debug("error compensation failed: %d\n", rc);
 
 	*result_ua = temp_current;
-	pr_info("err compensated ibat=%duA\n", *result_ua);
+	pr_debug("err compensated ibat=%duA\n", *result_ua);
 	return 0;
 }
 
@@ -1824,7 +1824,7 @@ out:
 
 static int clamp_soc_based_on_voltage(struct qpnp_bms_chip *chip, int soc)
 {
-	int rc, vbat_uv = 0;
+	int rc, vbat_uv;
 
 	rc = get_battery_voltage(&vbat_uv);
 	if (rc < 0) {
@@ -1991,7 +1991,7 @@ done_calculating:
 static int calculate_soc_from_voltage(struct qpnp_bms_chip *chip)
 {
 	int voltage_range_uv, voltage_remaining_uv, voltage_based_soc;
-	int rc, vbat_uv = 0;
+	int rc, vbat_uv;
 
 	rc = get_battery_voltage(&vbat_uv);
 	if (rc < 0) {
@@ -2180,7 +2180,7 @@ static void configure_vbat_monitor_high(struct qpnp_bms_chip *chip)
 static void btm_notify_vbat(enum qpnp_tm_state state, void *ctx)
 {
 	struct qpnp_bms_chip *chip = ctx;
-	int vbat_uv = 0;
+	int vbat_uv;
 	struct qpnp_vadc_result result;
 	int rc;
 
@@ -2368,7 +2368,7 @@ static int get_prop_bms_batt_resistance(struct qpnp_bms_chip *chip)
 /* Returns instantaneous current in uA */
 static int get_prop_bms_current_now(struct qpnp_bms_chip *chip)
 {
-	int rc, result_ua = 0;
+	int rc, result_ua;
 
 	rc = get_battery_current(chip, &result_ua);
 	if (rc) {
@@ -2381,7 +2381,7 @@ static int get_prop_bms_current_now(struct qpnp_bms_chip *chip)
 /* Returns coulomb counter in uAh */
 static int get_prop_bms_charge_counter(struct qpnp_bms_chip *chip)
 {
-	int64_t cc_raw = 0;
+	int64_t cc_raw;
 
 	mutex_lock(&chip->bms_output_lock);
 	lock_output_data(chip);
@@ -3032,10 +3032,9 @@ static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 #ifndef EXTERNAL_FUELGAUGE
 	chip->bms_psy.external_power_changed =
 		qpnp_bms_external_power_changed;
-#endif
 	chip->bms_psy.supplied_to = qpnp_bms_supplicants;
 	chip->bms_psy.num_supplicants = ARRAY_SIZE(qpnp_bms_supplicants);
-
+#endif
 	rc = power_supply_register(chip->dev, &chip->bms_psy);
 
 	if (rc < 0) {

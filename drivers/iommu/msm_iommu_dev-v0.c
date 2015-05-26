@@ -32,8 +32,64 @@
 #include <mach/iommu.h>
 #include <mach/msm_bus.h>
 
+static DEFINE_MUTEX(iommu_list_lock);
+static LIST_HEAD(iommu_list);
+
 static struct of_device_id msm_iommu_v0_ctx_match_table[];
-static struct iommu_access_ops *msm_iommu_access_ops;
+
+void msm_iommu_add_drv(struct msm_iommu_drvdata *drv)
+{
+	mutex_lock(&iommu_list_lock);
+	list_add(&drv->list, &iommu_list);
+	mutex_unlock(&iommu_list_lock);
+}
+
+void msm_iommu_remove_drv(struct msm_iommu_drvdata *drv)
+{
+	mutex_lock(&iommu_list_lock);
+	list_del(&drv->list);
+	mutex_unlock(&iommu_list_lock);
+}
+
+static int find_iommu_ctx(struct device *dev, void *data)
+{
+	struct msm_iommu_ctx_drvdata *c;
+
+	c = dev_get_drvdata(dev);
+	if (!c || !c->name)
+		return 0;
+
+	return !strcmp(data, c->name);
+}
+
+static struct device *find_context(struct device *dev, const char *name)
+{
+	return device_find_child(dev, (void *)name, find_iommu_ctx);
+}
+
+struct device *msm_iommu_get_ctx(const char *ctx_name)
+{
+	struct msm_iommu_drvdata *drv;
+	struct device *dev = NULL;
+
+	mutex_lock(&iommu_list_lock);
+	list_for_each_entry(drv, &iommu_list, list) {
+		dev = find_context(drv->dev, ctx_name);
+		if (dev)
+			break;
+	}
+	mutex_unlock(&iommu_list_lock);
+
+	put_device(dev);
+
+	if (!dev || !dev_get_drvdata(dev)) {
+		pr_debug("Could not find context <%s>\n", ctx_name);
+		dev = ERR_PTR(-EPROBE_DEFER);
+	}
+
+	return dev;
+}
+EXPORT_SYMBOL(msm_iommu_get_ctx);
 
 static void msm_iommu_reset(void __iomem *base, void __iomem *glb_base, int ncb)
 {
@@ -215,12 +271,6 @@ static int msm_iommu_parse_dt(struct platform_device *pdev,
 
 	drvdata->sec_id = -1;
 	drvdata->ttbr_split = 0;
-
-	drvdata->needs_rem_spinlock = of_property_read_bool(pdev->dev.of_node,
-					"qcom,msm-enable-remote-spinlock");
-
-	if (drvdata->needs_rem_spinlock)
-		pr_info("%s enabled remote spinlock\n", drvdata->name);
 
 	ret = of_platform_populate(pdev->dev.of_node,
 				   msm_iommu_v0_ctx_match_table,
@@ -404,7 +454,7 @@ static int msm_iommu_probe(struct platform_device *pdev)
 
 	drvdata->dev = &pdev->dev;
 
-	msm_iommu_access_ops->iommu_clk_on(drvdata);
+	iommu_access_ops_v0.iommu_clk_on(drvdata);
 
 	msm_iommu_reset(drvdata->base, drvdata->glb_base, drvdata->ncb);
 
@@ -412,7 +462,7 @@ static int msm_iommu_probe(struct platform_device *pdev)
 	if (ret)
 		goto fail_clk;
 
-	msm_iommu_access_ops->iommu_clk_off(drvdata);
+	iommu_access_ops_v0.iommu_clk_off(drvdata);
 
 	pr_info("device %s mapped at %p, with %d ctx banks\n",
 		drvdata->name, drvdata->base, drvdata->ncb);
@@ -428,7 +478,7 @@ static int msm_iommu_probe(struct platform_device *pdev)
 			pr_info("%s: pmon not available.\n", drvdata->name);
 		} else {
 			pmon_info->iommu.base = drvdata->base;
-			pmon_info->iommu.ops = msm_iommu_access_ops;
+			pmon_info->iommu.ops = &iommu_access_ops_v0;
 			pmon_info->iommu.hw_ops = iommu_pm_get_hw_ops_v0();
 			pmon_info->iommu.iommu_name = drvdata->name;
 			pmon_info->iommu.always_on = 1;
@@ -447,7 +497,7 @@ static int msm_iommu_probe(struct platform_device *pdev)
 	return 0;
 
 fail_clk:
-	msm_iommu_access_ops->iommu_clk_off(drvdata);
+	iommu_access_ops_v0.iommu_clk_off(drvdata);
 fail:
 	__put_bus_vote_client(drvdata);
 fail_mem:
@@ -647,9 +697,9 @@ static int msm_iommu_ctx_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	msm_iommu_access_ops->iommu_clk_on(drvdata);
+	iommu_access_ops_v0.iommu_clk_on(drvdata);
 	__program_m2v_tables(drvdata, ctx_drvdata);
-	msm_iommu_access_ops->iommu_clk_off(drvdata);
+	iommu_access_ops_v0.iommu_clk_off(drvdata);
 
 	dev_info(&pdev->dev, "context %s using bank %d\n", ctx_drvdata->name,
 							   ctx_drvdata->num);
@@ -696,11 +746,6 @@ static struct platform_driver msm_iommu_ctx_driver = {
 static int __init msm_iommu_driver_init(void)
 {
 	int ret;
-
-	if (msm_soc_version_supports_iommu_v0()) {
-		msm_set_iommu_access_ops(&iommu_access_ops_v0);
-		msm_iommu_access_ops = msm_get_iommu_access_ops();
-	}
 	ret = platform_driver_register(&msm_iommu_driver);
 	if (ret != 0) {
 		pr_err("Failed to register IOMMU driver\n");

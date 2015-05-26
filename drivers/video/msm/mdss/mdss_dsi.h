@@ -200,6 +200,11 @@ struct dsi_clk_desc {
 
 #define MDSS_DSI_MRPS	0x04  /* Maximum Return Packet Size */
 
+#ifdef CONFIG_LGE_SUPORT_OLED_TUNING
+#define DSI_LANE_CTRL_HS_MASK	0x10000000
+#define DSI_LANE_CTRL_LP_MASK	0x0FFFFFFF
+#endif
+
 #ifdef CONFIG_LGE_ESD_CHECK
 /* LGE_CHANGE_S
 * change code for ESD check
@@ -315,7 +320,6 @@ struct mdss_panel_common_pdata {
 	int (*on) (struct mdss_panel_data *pdata);
 	int (*off) (struct mdss_panel_data *pdata);
 	void (*bl_fnc) (struct mdss_panel_data *pdata, u32 bl_level);
-	int (*partial_update_fnc) (struct mdss_panel_data *pdata);
 
 	struct dsi_panel_cmds on_cmds;
 	struct dsi_panel_cmds off_cmds;
@@ -338,12 +342,10 @@ struct mdss_dsi_ctrl_pdata {
 	int ndx;	/* panel_num */
 	int (*on) (struct mdss_panel_data *pdata);
 	int (*off) (struct mdss_panel_data *pdata);
-	int (*partial_update_fnc) (struct mdss_panel_data *pdata);
 	struct mdss_panel_data panel_data;
 	unsigned char *ctrl_base;
 	int reg_size;
 	u32 clk_cnt;
-	struct clk *mdp_core_clk;
 	struct clk *ahb_clk;
 	struct clk *axi_clk;
 	struct clk *byte_clk;
@@ -406,13 +408,11 @@ int mdss_dsi_cmds_rx(struct mdss_dsi_ctrl_pdata *ctrl,
 void mdss_dsi_cmds_mode1(struct mdss_panel_data *pdata);
 void mdss_dsi_cmds_mode2(struct mdss_panel_data *pdata);
 #endif
-#if defined(CONFIG_OLED_SUPPORT) && defined(CONFIG_LGE_OLED_IMG_TUNING)
+#if defined(CONFIG_LGE_SUPORT_OLED_TUNING)
 int mdss_dsi_panel_img_tune_apply(unsigned int screen_mode);
 #endif
 void mdss_dsi_host_init(struct mipi_panel_info *pinfo,
 				struct mdss_panel_data *pdata);
-void mdss_dsi_set_tear_on(struct mdss_dsi_ctrl_pdata *ctrl);
-void mdss_dsi_set_tear_off(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_op_mode_config(int mode,
 				struct mdss_panel_data *pdata);
 void mdss_dsi_cmd_mode_ctrl(int enable);

@@ -196,12 +196,11 @@ static const struct file_operations fmax_rates_fops = {
 static int list_rates_show(struct seq_file *m, void *unused)
 {
 	struct clk *clock = m->private;
-	int level, i = 0;
-	unsigned long rate, fmax = 0;
+	int rate, level, fmax = 0, i = 0;
 
 	/* Find max frequency supported within voltage constraints. */
 	if (!clock->vdd_class) {
-		fmax = ULONG_MAX;
+		fmax = INT_MAX;
 	} else {
 		for (level = 0; level < clock->num_fmax; level++)
 			if (clock->fmax[level])
@@ -212,9 +211,9 @@ static int list_rates_show(struct seq_file *m, void *unused)
 	 * List supported frequencies <= fmax. Higher frequencies may appear in
 	 * the frequency table, but are not valid and should not be listed.
 	 */
-	while (!IS_ERR_VALUE(rate = clock->ops->list_rate(clock, i++))) {
+	while ((rate = clock->ops->list_rate(clock, i++)) >= 0) {
 		if (rate <= fmax)
-			seq_printf(m, "%lu\n", rate);
+			seq_printf(m, "%u\n", rate);
 	}
 
 	return 0;

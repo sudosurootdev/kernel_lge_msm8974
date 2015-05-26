@@ -98,9 +98,9 @@ struct mdp_csc_cfg dmb_csc_convert = {
 #elif defined(CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI)
 	0,
 	{
-		0x0254, 0x0000, 0x0331,
-		0x0254, 0xff37, 0xfe60,
-		0x0254, 0x0409, 0x0000,
+		0x0258, 0x0000, 0x0331, //300
+		0x0262, 0xff37, 0xfe60, //305
+		0x0276, 0x0409, 0x0000, //315
 	},
 	{ 0xfff0, 0xff80, 0xff80,},
 	{ 0x0, 0x0, 0x0,},
@@ -134,24 +134,13 @@ struct mdp_csc_cfg dmb_csc_convert = {
 
 #if defined(CONFIG_LGE_BROADCAST_ONESEG)
 struct mdp_csc_cfg dmb_csc_convert = {
-#if defined(CONFIG_MACH_MSM8974_G2_DCM)
-	/* A1-DCM 1Seg Display tunning set  R: 290, G: 290, B: 305, 1seg tuning value */
+#if defined(CONFIG_MACH_MSM8974_G2_DCM) || defined(CONFIG_MACH_MSM8974_G2_KDDI)
+	/* A1-DCM/KDDI 1Seg Display tunning set  R: 290, G: 290, B: 305, 1seg tuning value */
 	0,
 	{
 		0x0244, 0x0000, 0x0331,
 		0x0244, 0xff37, 0xfe60,
 		0x0262, 0x0409, 0x0000,
-	},
-	{ 0xfff0, 0xff80, 0xff80,},
-	{ 0x0, 0x0, 0x0,},
-	{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
-	{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
-#elif defined(CONFIG_MACH_MSM8974_G2_KDDI)
-	0,
-	{
-		0x0254, 0x0000, 0x0331,
-		0x0254, 0xff37, 0xfe60,
-		0x0254, 0x0409, 0x0000,
 	},
 	{ 0xfff0, 0xff80, 0xff80,},
 	{ 0x0, 0x0, 0x0,},
@@ -705,6 +694,7 @@ static int pp_vig_pipe_setup(struct mdss_mdp_pipe *pipe, u32 *op)
 #else
 			if(dmb_status == 1) {
 				mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num, 1, &dmb_csc_convert);
+				pr_err("mdss_mdp_csc_setup_data (R:0x%x, G:0x%x, B:0x%x)\n", dmb_csc_convert.csc_mv[0], dmb_csc_convert.csc_mv[3], dmb_csc_convert.csc_mv[6]);
 			} else {
 				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num, 1, MDSS_MDP_CSC_YUV2RGB);
 			}
@@ -848,7 +838,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			if (src_h <= pipe->dst.h)
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_BIL << 10) |
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+					(MDSS_MDP_SCALE_FILTER_BIL << 18);
+#else
 					(MDSS_MDP_SCALE_FILTER_NEAREST << 18);
+#endif
 			else
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 10) |
@@ -901,7 +895,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			if (src_w <= pipe->dst.w)
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_BIL << 8) |
+#if defined(CONFIG_MACH_MSM8974_VU3_KR)
+					(MDSS_MDP_SCALE_FILTER_BIL << 16);
+#else
 					(MDSS_MDP_SCALE_FILTER_NEAREST << 16);
+#endif
 			else
 				scale_config |= /* RGB, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 8) |
@@ -1160,10 +1158,6 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 			pr_warn("ad_setup(dspp%d) returns %d", dspp_num, ret);
 #endif
 	}
-	/* call calibration specific processing here */
-	if (ctl->mfd->calib_mode)
-		goto flush_exit;
-
 	/* nothing to update */
 	if ((!flags) && (!(opmode)) && (ret <= 0))
 		goto dspp_exit;
@@ -1254,7 +1248,6 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 	if (pp_sts->pgc_sts & PP_STS_ENABLE)
 		opmode |= (1 << 22);
 
-flush_exit:
 	writel_relaxed(opmode, basel + MDSS_MDP_REG_DSPP_OP_MODE);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, BIT(13 + dspp_num));
 	wmb();
@@ -3227,7 +3220,7 @@ error:
 		ctl = mfd_to_ctl(mfd);
 		mdss_mdp_pp_setup(ctl);
 		if (wait) {
-			ret = wait_for_completion_timeout(
+			ret = wait_for_completion_interruptible_timeout(
 					&ad->comp, HIST_WAIT_TIMEOUT(1));
 			if (ret == 0)
 				ret = -ETIMEDOUT;
@@ -3547,9 +3540,6 @@ static void pp_ad_calc_worker(struct work_struct *work)
 	mutex_lock(&mfd->lock);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, BIT(13 + ad->num));
 	mutex_unlock(&mfd->lock);
-
-	/* Trigger update notify to wake up those waiting for display updates */
-	mdss_fb_update_notify_update(mfd);
 }
 
 #define PP_AD_LUT_LEN 33
@@ -3589,7 +3579,6 @@ int mdss_mdp_ad_addr_setup(struct mdss_data_type *mdata, u32 *ad_off)
 		mdata->ad_cfgs[i].last_str = 0xFFFFFFFF;
 		mutex_init(&mdata->ad_cfgs[i].lock);
 		mdata->ad_cfgs[i].handle.vsync_handler = pp_ad_vsync_handler;
-		mdata->ad_cfgs[i].handle.cmd_post_flush = true;
 		INIT_WORK(&mdata->ad_cfgs[i].calc_work, pp_ad_calc_worker);
 	}
 	return rc;
@@ -3653,6 +3642,9 @@ end:
 	return ret;
 }
 
+
+
+
 int mdss_mdp_calib_config(struct mdp_calib_config_data *cfg, u32 *copyback)
 {
 	int ret = -1;
@@ -3674,82 +3666,5 @@ int mdss_mdp_calib_config(struct mdp_calib_config_data *cfg, u32 *copyback)
 		ret = 0;
 	}
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
-	return ret;
-}
-
-int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
-				struct mdss_calib_cfg *cfg)
-{
-	if (!mdss_pp_res || !mfd)
-		return -EINVAL;
-	mutex_lock(&mdss_pp_mutex);
-	mfd->calib_mode = cfg->calib_mask;
-	mutex_unlock(&mdss_pp_mutex);
-	return 0;
-}
-
-int mdss_mdp_calib_config_buffer(struct mdp_calib_config_buffer *cfg,
-						u32 *copyback)
-{
-	int ret = -1;
-	int counter = cfg->size / (sizeof(uint32_t) * 2);
-	uint32_t *buff = NULL, *buff_org = NULL;
-	void *ptr;
-	int i = 0;
-
-	buff_org = buff = kzalloc(cfg->size, GFP_KERNEL);
-	if (buff == NULL) {
-		pr_err("Allocation failed");
-		return ret;
-	}
-
-	if (copy_from_user(buff, cfg->buffer, cfg->size)) {
-		kfree(buff);
-		pr_err("Copy failed");
-		return ret;
-	}
-
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
-
-	if (cfg->ops & MDP_PP_OPS_READ) {
-		for (i = 0 ; i < counter ; i++) {
-			if (is_valid_calib_addr((void *) *buff)) {
-				ret = 0;
-			} else {
-				ret = -1;
-				pr_err("Address validation failed");
-				break;
-			}
-
-			ptr = (void *)(((unsigned int) *buff) +
-					 (mdss_res->mdp_base));
-			buff++;
-			*buff = readl_relaxed(ptr);
-			buff++;
-		}
-		if (!ret)
-			ret = copy_to_user(cfg->buffer, buff_org, cfg->size);
-		*copyback = 1;
-	} else if (cfg->ops & MDP_PP_OPS_WRITE) {
-		for (i = 0 ; i < counter ; i++) {
-			if (is_valid_calib_addr((void *) *buff)) {
-				ret = 0;
-			} else {
-				ret = -1;
-				pr_err("Address validation failed");
-				break;
-			}
-
-			ptr = (void *)(((unsigned int) *buff) +
-					 (mdss_res->mdp_base));
-			buff++;
-			writel_relaxed(*buff, ptr);
-			buff++;
-		}
-	}
-
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
-
-	kfree(buff_org);
 	return ret;
 }

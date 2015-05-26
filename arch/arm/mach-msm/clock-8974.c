@@ -717,38 +717,17 @@ DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(cxo_a0_pin, cxo_a0_a_pin, A0_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(cxo_a1_pin, cxo_a1_a_pin, A1_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(cxo_a2_pin, cxo_a2_a_pin, A2_ID);
 
-static unsigned int soft_vote_gpll0;
-
-static struct pll_vote_clk gpll0_ao_clk_src = {
-	.en_reg = (void __iomem *)APCS_GPLL_ENA_VOTE_REG,
-	.en_mask = BIT(0),
-	.status_reg = (void __iomem *)GPLL0_STATUS_REG,
-	.status_mask = BIT(17),
-	.soft_vote = &soft_vote_gpll0,
-	.soft_vote_mask = PLL_SOFT_VOTE_ACPU,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.parent = &cxo_a_clk_src.c,
-		.rate = 600000000,
-		.dbg_name = "gpll0_ao_clk_src",
-		.ops = &clk_ops_pll_acpu_vote,
-		CLK_INIT(gpll0_ao_clk_src.c),
-	},
-};
-
 static struct pll_vote_clk gpll0_clk_src = {
 	.en_reg = (void __iomem *)APCS_GPLL_ENA_VOTE_REG,
 	.en_mask = BIT(0),
 	.status_reg = (void __iomem *)GPLL0_STATUS_REG,
 	.status_mask = BIT(17),
-	.soft_vote = &soft_vote_gpll0,
-	.soft_vote_mask = PLL_SOFT_VOTE_PRIMARY,
 	.base = &virt_bases[GCC_BASE],
 	.c = {
 		.parent = &cxo_clk_src.c,
 		.rate = 600000000,
 		.dbg_name = "gpll0_clk_src",
-		.ops = &clk_ops_pll_acpu_vote,
+		.ops = &clk_ops_pll_vote,
 		CLK_INIT(gpll0_clk_src.c),
 	},
 };
@@ -817,6 +796,7 @@ static DEFINE_CLK_VOTER(pnoc_msmbus_clk, &pnoc_clk.c, LONG_MAX);
 static DEFINE_CLK_VOTER(snoc_msmbus_clk, &snoc_clk.c, LONG_MAX);
 static DEFINE_CLK_VOTER(cnoc_msmbus_clk, &cnoc_clk.c, LONG_MAX);
 static DEFINE_CLK_VOTER(pnoc_msmbus_a_clk, &pnoc_a_clk.c, LONG_MAX);
+static DEFINE_CLK_VOTER(pnoc_pm_clk, &pnoc_clk.c, LONG_MAX);
 static DEFINE_CLK_VOTER(snoc_msmbus_a_clk, &snoc_a_clk.c, LONG_MAX);
 static DEFINE_CLK_VOTER(cnoc_msmbus_a_clk, &cnoc_a_clk.c, LONG_MAX);
 
@@ -837,7 +817,6 @@ static DEFINE_CLK_BRANCH_VOTER(cxo_wlan_clk, &cxo_clk_src.c);
 static DEFINE_CLK_BRANCH_VOTER(cxo_pil_pronto_clk, &cxo_clk_src.c);
 static DEFINE_CLK_BRANCH_VOTER(cxo_dwc3_clk, &cxo_clk_src.c);
 static DEFINE_CLK_BRANCH_VOTER(cxo_ehci_host_clk, &cxo_clk_src.c);
-static DEFINE_CLK_BRANCH_VOTER(cxo_lpm_clk, &cxo_clk_src.c);
 
 static struct clk_freq_tbl ftbl_gcc_usb30_master_clk[] = {
 	F(125000000,  gpll0,   1,   5,  24),
@@ -2830,9 +2809,9 @@ static struct clk_freq_tbl ftbl_camss_gp0_1_clk[] = {
 	F_MM(10000,       cxo,  16,   1, 120),
 	F_MM(20000,       cxo,  16,   1,  50),
 #if defined(CONFIG_LGE_SM100) || defined(CONFIG_TSPDRV)
-	F_MM(29268,       cxo,  8,   1,  82), /* for 230Hz -> Spec out*/
+	F_MM(29268,       cxo,  8,   1,  82), /* for 230Hz on Vu3,Z*/
 	F_MM(29813,       cxo,  7,   1,  92), /* for 230Hz */
-	F_MM(29090,       cxo,  6,   1,  110), /* for 230Hz on VU3*/
+	F_MM(29090,       cxo,  6,   1,  110), /* for 230Hz*/
 	F_MM(22222,       cxo,  16,   1,  54), /* for 175Hz */
 #endif
 	F_MM(6000000,   gpll0,  10,   1,  10),
@@ -3855,6 +3834,7 @@ static struct branch_clk camss_mclk3_clk = {
 static struct branch_clk camss_micro_ahb_clk = {
 	.cbcr_reg = CAMSS_MICRO_AHB_CBCR,
 	.has_sibling = 1,
+	.bcr_reg = CAMSS_MICRO_BCR,  //QCT_PATCH, fix the H/W reset on loading cpp, 2013-09-11, freeso.kim@lge.com
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.dbg_name = "camss_micro_ahb_clk",
@@ -4850,7 +4830,6 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("xo", cxo_pil_pronto_clk.c,     "fb21b000.qcom,pronto"),
 	CLK_LOOKUP("xo",       cxo_dwc3_clk.c,                 "msm_dwc3"),
 	CLK_LOOKUP("xo",  cxo_ehci_host_clk.c,            "msm_ehci_host"),
-	CLK_LOOKUP("xo",        cxo_lpm_clk.c,        "fc4281d0.qcom,mpm"),
 
 /*  LGE_CHANGE_S, [NFC][byunggu.kang@lge.com], 2013-02-27, NFC Bring up */
 #ifdef CONFIG_NFC_BCM2079X
@@ -4871,14 +4850,11 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("xo",	cxo_a2.c,	"spi101.0"),
 #endif
 #endif /* LGE_BROADCAST */ 
-#if defined(CONFIG_LGE_BROADCAST_ONESEG)
+#if defined(CONFIG_LGE_BROADCAST_ONESEG) && (defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_G2_DCM))
 		CLK_LOOKUP("xo",	cxo_a2.c,	"spi8.0"),
 #endif /* LGE_BROADCAST ONESEG */
 
 	CLK_LOOKUP("measure",	measure_clk.c,	"debug"),
-
-	CLK_LOOKUP("gpll0", gpll0_clk_src.c, ""),
-	CLK_LOOKUP("gpll0_ao", gpll0_ao_clk_src.c, ""),
 
 	CLK_LOOKUP("dma_bam_pclk", gcc_bam_dma_ahb_clk.c, "msm_sps"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f991f000.serial"),
@@ -4936,7 +4912,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 #ifdef CONFIG_LGE_BLUETOOTH
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9960000.uart"),
 #endif
-#if defined(CONFIG_LGE_BROADCAST_TDMB) || defined (CONFIG_LGE_BROADCAST_ONESEG)
+#if defined(CONFIG_LGE_BROADCAST_TDMB) || (defined(CONFIG_LGE_BROADCAST_ONESEG) && (defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_G2_DCM)))
 	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9964000.spi"),
 #endif /* LGE_BROADCAST */
 #ifdef CONFIG_LGE_IRRC
@@ -4946,8 +4922,13 @@ static struct clk_lookup msm_clocks_8974[] = {
 #endif
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup1_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup1_spi_apps_clk.c, ""),
+#if defined (CONFIG_LGE_BROADCAST_ONESEG) && defined (CONFIG_MACH_MSM8974_Z_KDDI)
+	CLK_LOOKUP("iface_clk", gcc_blsp2_ahb_clk.c, "f9964000.i2c"),
+	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_i2c_apps_clk.c, "f9964000.i2c"),	/* BLSP8, BLSP 2 QUP 1, 0xF9964000 */
+#else
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_i2c_apps_clk.c, ""),
-#if defined(CONFIG_LGE_BROADCAST_TDMB) || defined (CONFIG_LGE_BROADCAST_ONESEG)	/*  LGE_CHANGE_E, [1seg][youngbea.jung@lge.com], 2013-05-14, 1seg Bring up */
+#endif /* CONFIG_LGE_BROADCAST_ONESEG */
+#if defined(CONFIG_LGE_BROADCAST_TDMB) || (defined(CONFIG_LGE_BROADCAST_ONESEG) && (defined(CONFIG_MACH_MSM8974_G2_KDDI) || defined(CONFIG_MACH_MSM8974_G2_DCM)))
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_spi_apps_clk.c, "f9964000.spi"),
 #else
 	CLK_LOOKUP("core_clk", gcc_blsp2_qup2_spi_apps_clk.c, ""),
@@ -5069,8 +5050,6 @@ static struct clk_lookup msm_clocks_8974[] = {
 #endif
 	CLK_LOOKUP("pixel_clk", mdss_pclk0_clk.c, "fd922800.qcom,mdss_dsi"),
 	CLK_LOOKUP("pixel_clk", mdss_pclk1_clk.c, "fd922e00.qcom,mdss_dsi"),
-	CLK_LOOKUP("mdp_core_clk", mdss_mdp_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("mdp_core_clk", mdss_mdp_clk.c, "fd922e00.qcom,mdss_dsi"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922100.qcom,hdmi_tx"),
 	CLK_LOOKUP("alt_iface_clk", mdss_hdmi_ahb_clk.c,
 		"fd922100.qcom,hdmi_tx"),
@@ -5386,6 +5365,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("bus_clk",	snoc_msmbus_clk.c,	"msm_sys_noc"),
 	CLK_LOOKUP("bus_a_clk",	snoc_msmbus_a_clk.c,	"msm_sys_noc"),
 	CLK_LOOKUP("bus_clk",	pnoc_msmbus_clk.c,	"msm_periph_noc"),
+	CLK_LOOKUP("bus_clk",   pnoc_pm_clk.c,      "pm_8x60"),
 	CLK_LOOKUP("bus_a_clk",	pnoc_msmbus_a_clk.c,	"msm_periph_noc"),
 	CLK_LOOKUP("mem_clk",	bimc_msmbus_clk.c,	"msm_bimc"),
 	CLK_LOOKUP("mem_a_clk",	bimc_msmbus_a_clk.c,	"msm_bimc"),

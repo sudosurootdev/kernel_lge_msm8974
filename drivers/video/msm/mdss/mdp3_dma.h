@@ -16,9 +16,6 @@
 
 #include <linux/sched.h>
 
-#define MDP_HISTOGRAM_BIN_NUM	32
-#define MDP_LUT_SIZE 256
-
 enum {
 	MDP3_DMA_P,
 	MDP3_DMA_S,
@@ -122,18 +119,8 @@ enum {
 };
 
 enum {
-	MDP3_DMA_HISTO_STATE_UNKNOWN,
-	MDP3_DMA_HISTO_STATE_IDLE,
-	MDP3_DMA_HISTO_STATE_RESET,
-	MDP3_DMA_HISTO_STATE_START,
-	MDP3_DMA_HISTO_STATE_READY,
-};
-
-enum {
 	MDP3_DMA_CALLBACK_TYPE_VSYNC = 0x01,
 	MDP3_DMA_CALLBACK_TYPE_DMA_DONE = 0x02,
-	MDP3_DMA_CALLBACK_TYPE_HIST_RESET_DONE = 0x04,
-	MDP3_DMA_CALLBACK_TYPE_HIST_DONE = 0x08,
 };
 
 struct mdp3_dma_source {
@@ -144,7 +131,6 @@ struct mdp3_dma_source {
 	int y;
 	void *buf;
 	int stride;
-	int vsync_count;
 };
 
 struct mdp3_dma_output_config {
@@ -189,24 +175,24 @@ struct mdp3_dma_ccs {
 };
 
 struct mdp3_dma_lut {
-	u16 *color0_lut;
-	u16 *color1_lut;
-	u16 *color2_lut;
-};
-
-struct mdp3_dma_lut_config {
-	int lut_enable;
-	u32 lut_sel;
-	u32 lut_position;
+	uint8_t *color0_lut1;
+	uint8_t *color1_lut1;
+	uint8_t *color2_lut1;
+	uint8_t *color0_lut2;
+	uint8_t *color1_lut2;
+	uint8_t *color2_lut2;
 };
 
 struct mdp3_dma_color_correct_config {
 	int ccs_enable;
+	int lut_enable;
+	u32 lut_sel;
 	u32 post_limit_sel;
 	u32 pre_limit_sel;
 	u32 post_bias_sel;
 	u32 pre_bias_sel;
 	u32 ccs_sel;
+	u32 lut_position;
 };
 
 struct mdp3_dma_histogram_config {
@@ -217,10 +203,15 @@ struct mdp3_dma_histogram_config {
 };
 
 struct mdp3_dma_histogram_data {
-	u32 r_data[MDP_HISTOGRAM_BIN_NUM];
-	u32 g_data[MDP_HISTOGRAM_BIN_NUM];
-	u32 b_data[MDP_HISTOGRAM_BIN_NUM];
-	u32 extra[2];
+	uint8_t r_max_value;
+	uint8_t r_min_value;
+	uint8_t b_max_value;
+	uint8_t b_min_value;
+	uint8_t g_max_value;
+	uint8_t g_min_value;
+	uint8_t r_data[32];
+	uint8_t g_data[32];
+	uint8_t b_data[32];
 };
 
 struct mdp3_vsync_notification {
@@ -235,23 +226,20 @@ struct mdp3_dma {
 	u32 capability;
 	int in_use;
 	int available;
+	int busy;
 
 	spinlock_t dma_lock;
-	spinlock_t histo_lock;
 	struct completion vsync_comp;
 	struct completion dma_comp;
-	struct completion histo_comp;
 	struct mdp3_vsync_notification vsync_client;
+	u32 cb_type;
 
 	struct mdp3_dma_output_config output_config;
 	struct mdp3_dma_source source_config;
 
 	struct mdp3_dma_cursor cursor;
 	struct mdp3_dma_color_correct_config ccs_config;
-	struct mdp3_dma_lut_config lut_config;
 	struct mdp3_dma_histogram_config histogram_config;
-	int histo_state;
-	struct mdp3_dma_histogram_data histo_data;
 
 	int (*start)(struct mdp3_dma *dma, struct mdp3_intf *intf);
 
@@ -262,22 +250,27 @@ struct mdp3_dma {
 
 	int (*config_ccs)(struct mdp3_dma *dma,
 			struct mdp3_dma_color_correct_config *config,
-			struct mdp3_dma_ccs *ccs);
-
-	int (*config_lut)(struct mdp3_dma *dma,
-			struct mdp3_dma_lut_config *config,
+			struct mdp3_dma_ccs *ccs,
 			struct mdp3_dma_lut *lut);
 
-	int (*update)(struct mdp3_dma *dma, void *buf, struct mdp3_intf *intf);
+	int (*update)(struct mdp3_dma *dma, void *buf);
 
 	int (*update_cursor)(struct mdp3_dma *dma, int x, int y);
 
-	int (*get_histo)(struct mdp3_dma *dma);
+	int (*get_histo)(struct mdp3_dma *dma,
+				struct mdp3_dma_histogram_data *data);
 
 	int (*config_histo)(struct mdp3_dma *dma,
 				struct mdp3_dma_histogram_config *histo_config);
 
-	int (*histo_op)(struct mdp3_dma *dma, u32 op);
+	int (*histo_op)(struct mdp3_dma *dma,
+				u32 op);
+
+	int (*histo_intr_status)(struct mdp3_dma *dma, int *status);
+
+	int (*histo_intr_enable)(struct mdp3_dma *dma, u32 mask);
+
+	int (*histo_intr_clear)(struct mdp3_dma *dma, u32 mask);
 
 	void (*vsync_enable)(struct mdp3_dma *dma,
 			struct mdp3_vsync_notification *vsync_client);

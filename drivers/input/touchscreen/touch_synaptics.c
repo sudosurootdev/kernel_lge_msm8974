@@ -33,6 +33,7 @@
 #include "SynaImage_for_Z_revA.h"
 #include "SynaImage_for_Z_revB.h"
 #include "SynaImage_for_Z_revB_H_Pattern.h"
+#include "SynaImage_for_Z_revB_H_Pattern_new.h"
 #elif defined(CONFIG_MACH_MSM8974_G2_KDDI)
 #include "SynaImage_for_G2_KDDI.h"
 #else
@@ -209,10 +210,23 @@
 
 #ifdef CUST_G2_TOUCH
 extern int ts_charger_plug;
+#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM)
+extern int ime_drumming_status;
+extern int keyguard_status;
+#endif
+#if defined(CONFIG_LGE_Z_TOUCHSCREEN)
+extern int get_touch_ts_fw_version(char *);
+#endif
 #define OLD_S3404A_BOOT_ID	1245782
 #define S3404A_BOOT_ID 	1328275
 #define S3404B_BOOT_ID 	1380018
 #define PALM_DETECT_SIZE 28
+#endif
+
+#if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
+#define JITTER_FILTER_STR_REG	(DEVICE_CONTROL_REG+9)
+#define JITTER_FILTER_STR_REG_OFFSET	8
+#define JITTER_FILTER_STR_VAL	40
 #endif
 
 #ifdef CONFIG_MACH_MSM8974_G2_OPEN_COM
@@ -517,8 +531,8 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 		}
 		data->palm = palm_detected;
 
-	if( (ts_charger_plug == 1 && (data->prev_total_num != data->total_num)) &&
-		(touch_debug_mask & DEBUG_NOISE) ) {
+	if( 0 ) {// (ts_charger_plug == 1 && (data->prev_total_num != data->total_num)) &&
+		//(touch_debug_mask & DEBUG_NOISE) ) {
 
 		if (unlikely(touch_i2c_write_byte(ts->client, PAGE_SELECT_REG, ANALOG_PAGE) < 0)) {
 			TOUCH_ERR_MSG("PAGE_SELECT_REG write fail\n");
@@ -622,7 +636,6 @@ int synaptics_ts_get_data(struct i2c_client *client, struct touch_data* data)
 				data->curr_button.key_code = ts->ts_data.button.key_code;
 				data->curr_button.state = 0;
 			}
-			printk("[touch][sdk] Touch button status register value : %d", ts->ts_data.button_data_reg);
 		}
 	}
 #endif
@@ -726,8 +739,6 @@ static int read_page_description_table(struct i2c_client *client)
 }
 
 #ifdef CUST_G2_TOUCH
-#if !defined(CONFIG_MACH_MSM8974_G2_KDDI)
-
 int synaptics_ts_power(struct i2c_client *client, int power_ctrl);
 int get_bootloader_fw_ver(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 {
@@ -772,7 +783,9 @@ int get_bootloader_fw_ver(struct synaptics_ts_data* ts, struct touch_fw_info* fw
 #if defined(CONFIG_LGE_Z_TOUCHSCREEN)
 int get_ic_customer_family(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 {
-	read_page_description_table(ts->client);
+	if (read_page_description_table(ts->client) < 0) {
+		return -1;
+	}
 
 	if (unlikely(touch_i2c_read(ts->client, CUSTOMER_FAMILY_REG,
 			sizeof(ts->fw_info.customer_family), &ts->fw_info.customer_family) < 0)) {
@@ -786,15 +799,48 @@ int get_ic_customer_family(struct synaptics_ts_data* ts, struct touch_fw_info* f
 
 int get_ic_fw_version(struct synaptics_ts_data* ts)
 {
-	read_page_description_table(ts->client);
+	//read_page_description_table(ts->client);
 
 	if (unlikely(touch_i2c_read(ts->client, FLASH_CONFIG_ID_REG,
-			sizeof(ts->fw_info.config_id) - 1, ts->fw_info.config_id) < 0)) {
+					sizeof(ts->fw_info.config_id) - 1, ts->fw_info.config_id) < 0)) {
 		TOUCH_ERR_MSG("FLASH_CONFIG_ID_REG read fail\n");
 		return -EIO;
 	}
 
 	return (int)simple_strtoul(&ts->fw_info.config_id[1], NULL, 10);
+}
+
+int get_touch_panel_info(struct synaptics_ts_data* ts)
+{
+	u8 fw_ver[11] = {0,};
+	int firmware_version = 0;
+
+	get_touch_ts_fw_version(fw_ver);
+
+	if ((int)simple_strtoul(&fw_ver[1], NULL, 10) > 0)
+		firmware_version = (int)simple_strtoul(&fw_ver[1], NULL, 10);
+	if (get_ic_fw_version(ts) > 0)
+		firmware_version = get_ic_fw_version(ts);
+
+	if (firmware_version == 0) {	/* use board revision */
+		TOUCH_INFO_MSG("use board revision\n");
+#if defined(CONFIG_MACH_MSM8974_Z_LGU)
+		if (lge_get_board_revno() < HW_REV_D) { /* BAR_pattern panel */
+#elif defined(CONFIG_MACH_MSM8974_Z_SKT) || defined(CONFIG_MACH_MSM8974_Z_KT)
+		if (lge_get_board_revno() < HW_REV_C) { /* BAR_pattern panel */
+#elif defined(CONFIG_MACH_MSM8974_Z_KDDI)
+		if (lge_get_board_revno() < HW_REV_B) { /* BAR_pattern panel */
+#else
+		if (lge_get_board_revno() < HW_REV_D) { /* BAR_pattern panel */
+#endif
+			TOUCH_INFO_MSG("bar pattern\n");
+			return TOUCH_PANEL_BAR_PATTERN;
+		}
+	} else if (firmware_version < 31) { /* use f/w version */
+		TOUCH_INFO_MSG("use f/w version bar pattern\n");
+		return TOUCH_PANEL_BAR_PATTERN;
+	}
+	return TOUCH_PANEL_H_PATTERN;
 }
 #endif
 
@@ -893,6 +939,9 @@ int set_fw_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 {
 	fw_info->fw_setting.ic_chip_rev = get_ic_chip_rev(ts, fw_info);
 
+#if defined(CONFIG_MACH_MSM8974_G2_KDDI)
+    return 0;
+#else
 	memset(&SynaFirmware,0x00,sizeof(SynaFirmware));
 
 #ifdef CONFIG_MACH_MSM8974_G2_OPEN_COM
@@ -922,28 +971,42 @@ int set_fw_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 			break;
 		case TOUCH_CHIP_REV_B:
 			fw_info->fw_setting.customer_family = get_ic_customer_family(ts, fw_info);
+
 #ifdef CONFIG_MACH_MSM8974_Z_KDDI
 			if (lge_get_board_revno() >= HW_REV_B)
 				fw_info->fw_setting.customer_family = 1;
 #endif
+
 			switch(fw_info->fw_setting.customer_family)
 			{
-				case CUSTOMER_FAMILY_BAR_PATTERN:
-					if (get_ic_fw_version(ts) >= 31) { /* H_pattern panel */
-						TOUCH_INFO_MSG("panel pattern type : CUSTOMER_FAMILY_H_PATTERN (customer_family == 0)\n");
+				case TOUCH_PANEL_BAR_PATTERN:
+					if (get_touch_panel_info(ts) == TOUCH_PANEL_H_PATTERN) { /* H_pattern panel */
+						TOUCH_INFO_MSG("panel pattern type : TOUCH_PANEL_H_PATTERN (customer_family == 0)\n");
 						memcpy(&SynaFirmware,&SynaFirmware_c,sizeof(SynaFirmware));
 					} else {
-						TOUCH_INFO_MSG("panel pattern type : CUSTOMER_FAMILY_BAR_PATTERN\n");
+						TOUCH_INFO_MSG("panel pattern type : TOUCH_PANEL_BAR_PATTERN\n");
 						memcpy(&SynaFirmware,&SynaFirmware_b,sizeof(SynaFirmware));
 					}
 					break;
-				case CUSTOMER_FAMILY_H_PATTERN:
-					TOUCH_INFO_MSG("panel pattern type : CUSTOMER_FAMILY_H_PATTERN (customer_family == 1)\n");
+				case TOUCH_PANEL_H_PATTERN:
+					TOUCH_INFO_MSG("panel pattern type : TOUCH_PANEL_H_PATTERN (customer_family == 1)\n");
+#if defined(CONFIG_MACH_MSM8974_Z_KR)
+					if (lge_get_board_revno() >= HW_REV_1_0) /* new H_PATTERN panel*/
+						memcpy(&SynaFirmware,&SynaFirmware_d,sizeof(SynaFirmware));
+					else
+						memcpy(&SynaFirmware,&SynaFirmware_c,sizeof(SynaFirmware));
+#else
 					memcpy(&SynaFirmware,&SynaFirmware_c,sizeof(SynaFirmware));
+#endif
 					break;
 				default:
-					TOUCH_INFO_MSG("panel pattern type : unknown\n");
-					memcpy(&SynaFirmware,&SynaFirmware_c,sizeof(SynaFirmware));
+					if (get_touch_panel_info(ts) == TOUCH_PANEL_H_PATTERN) { /* H_pattern panel */
+						TOUCH_INFO_MSG("panel pattern type : unknown (H)\n");
+						memcpy(&SynaFirmware,&SynaFirmware_c,sizeof(SynaFirmware));
+					} else {
+						TOUCH_INFO_MSG("panel pattern type : unknown (BAR)\n");
+						memcpy(&SynaFirmware,&SynaFirmware_b,sizeof(SynaFirmware));
+					}
 			}
 			break;
 		default:
@@ -975,8 +1038,9 @@ int set_fw_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 #endif
 
 	return 0;
-}
 #endif
+}
+
 #endif
 int get_ic_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 {
@@ -990,12 +1054,11 @@ int get_ic_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 #else
 	u8 flash_control = 0;
 #endif
-#if !defined(CONFIG_MACH_MSM8974_G2_KDDI)
 
 	if(unlikely(set_fw_info(ts, fw_info) < 0)) {
 		return -1;
 	}
-#endif
+
 	read_page_description_table(ts->client);
 
 	memset(&ts->fw_info, 0, sizeof(struct synaptics_ts_fw_info));
@@ -1094,12 +1157,22 @@ int get_ic_info(struct synaptics_ts_data* ts, struct touch_fw_info* fw_info)
 	return 0;
 }
 
+#if defined(A1_only)
+extern int thermal_status;
+#endif
+
 int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 {
 	struct synaptics_ts_data *ts =
 			(struct synaptics_ts_data *)get_touch_handle(client);
 
 	u8 buf = 0;
+#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM)
+	u8 min_peak[5] = {0};
+#endif
+#if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
+	unsigned char *r_mem = NULL;
+#endif
 
 	if (touch_debug_mask & DEBUG_TRACE)
 		TOUCH_DEBUG_MSG("\n");
@@ -1116,12 +1189,105 @@ int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 				TOUCH_ERR_MSG("DEVICE_CONTROL_REG write fail\n");
 				return -EIO;
 			}
+#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM)
+			if((keyguard_status == 9) && ime_drumming_status) {
+				switch(fw_info->fw_setting.curr_touch_vendor) {
+					case TOUCH_VENDOR_TPK:
+						min_peak[0] = 0x0d;
+						if(thermal_status) {
+							min_peak[1] = 0x3c;
+						} else {
+							min_peak[1] = 0x0f;
+						}
+						break;
+					case TOUCH_VENDOR_LGIT:
+						min_peak[0] = 0x0d;
+						if(thermal_status) {
+							min_peak[1] = 0x28;
+						} else {
+							min_peak[1] = 0x0f;
+						}
+						break;
+					default :
+						break;
+				}
+				min_peak[2] = 0xc0;
+				min_peak[3] = 0x08;
+				min_peak[4] = 0x01;
+
+				if(touch_i2c_write(ts->client, DRUMMING_THRESH_N_DISTANCE_REG, 5, min_peak) < 0) {
+					TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+				} else {
+					TOUCH_INFO_MSG("%s : Peak Merge Threshold            : 192\n", __func__);
+					TOUCH_INFO_MSG("%s : Drumming Acceleration Threshold : 1\n", __func__);
+					TOUCH_INFO_MSG("%s : Min Drumming Distance           : 1\n", __func__);
+				}
+			}
+#endif
 		} else if(ts_charger_plug==1){
 			if (unlikely(touch_i2c_write_byte(client, DEVICE_CONTROL_REG,
 					DEVICE_CONTROL_NORMAL_OP | DEVICE_CONTROL_CONFIGURED | DEVICE_CHARGER_CONNECTED) < 0)) {
 				TOUCH_ERR_MSG("DEVICE_CONTROL_REG write fail\n");
 				return -EIO;
 			}
+#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM)
+			if((keyguard_status == 9) && ime_drumming_status) {
+				switch(fw_info->fw_setting.curr_touch_vendor) {
+					case TOUCH_VENDOR_TPK:
+						min_peak[0] = 0x0d;
+						min_peak[1] = 0x3c;
+						break;
+
+					case TOUCH_VENDOR_LGIT:
+						min_peak[0] = 0x0d;
+						min_peak[1] = 0x28;
+						break;
+
+					default :
+						break;
+				}
+
+				min_peak[2] = 0xc0;
+				min_peak[3] = 0x08;
+				min_peak[4] = 0x01;
+
+				if(touch_i2c_write(ts->client, DRUMMING_THRESH_N_DISTANCE_REG, 5, min_peak) < 0) {
+					TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+				} else {
+					TOUCH_INFO_MSG("%s : Peak Merge Threshold            : 192\n", __func__);
+					TOUCH_INFO_MSG("%s : Drumming Acceleration Threshold : 1\n", __func__);
+					TOUCH_INFO_MSG("%s : Min Drumming Distance           : 1\n", __func__);
+				}
+			} else {
+				switch(fw_info->fw_setting.curr_touch_vendor) {
+					case TOUCH_VENDOR_TPK:
+						min_peak[0] = 0x0d;
+						min_peak[1] = 0x3c;
+
+						if(thermal_status == 0){
+							if (touch_i2c_write(client, MINIMUM_PEAK_AMPLITUDE_REG, 2, min_peak) < 0){
+								TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+							} else
+								TOUCH_INFO_MSG("%s : TPK set min peak 60 \n", __func__);
+						}
+						break;
+					case TOUCH_VENDOR_LGIT:
+						min_peak[0] = 0x0d;
+						min_peak[1] = 0x28;
+
+						if(thermal_status == 0){
+							if (touch_i2c_write(client, MINIMUM_PEAK_AMPLITUDE_REG, 2, min_peak) < 0){
+								TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+							} else
+								TOUCH_INFO_MSG("%s : LGIT set min peak 40 \n", __func__);
+						}
+						break;
+					default:
+						break;
+				}
+			}
+#endif
+
 		}
 	} else {
 		if (unlikely(touch_i2c_write_byte(client, DEVICE_CONTROL_REG,
@@ -1129,6 +1295,41 @@ int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 			TOUCH_ERR_MSG("DEVICE_CONTROL_REG write fail\n");
 			return -EIO;
 		}
+#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI) && !defined(CONFIG_MACH_MSM8974_G2_OPEN_COM)
+		if((keyguard_status == 9) && ime_drumming_status) {
+			switch(fw_info->fw_setting.curr_touch_vendor) {
+				case TOUCH_VENDOR_TPK:
+					min_peak[0] = 0x0d;
+					if(thermal_status) {
+						min_peak[1] = 0x3c;
+					} else {
+						min_peak[1] = 0x0f;
+					}
+					break;
+				case TOUCH_VENDOR_LGIT:
+					min_peak[0] = 0x0d;
+					if(thermal_status) {
+						min_peak[1] = 0x28;
+					} else {
+						min_peak[1] = 0x0f;
+					}
+					break;
+				default :
+					break;
+			}
+			min_peak[2] = 0xc0;
+			min_peak[3] = 0x08;
+			min_peak[4] = 0x01;
+
+			if(touch_i2c_write(ts->client, DRUMMING_THRESH_N_DISTANCE_REG, 5, min_peak) < 0) {
+				TOUCH_ERR_MSG("%s : Touch i2c write fail !! \n", __func__);
+			} else {
+				TOUCH_INFO_MSG("%s : Peak Merge Threshold            : 192\n", __func__);
+				TOUCH_INFO_MSG("%s : Drumming Acceleration Threshold : 1\n", __func__);
+				TOUCH_INFO_MSG("%s : Min Drumming Distance           : 1\n", __func__);
+			}
+		}
+#endif
 	}
 
 	if (unlikely(touch_i2c_read(client, INTERRUPT_ENABLE_REG,
@@ -1147,6 +1348,36 @@ int synaptics_ts_init(struct i2c_client* client, struct touch_fw_info* fw_info)
 		TOUCH_ERR_MSG("INTERRUPT_STATUS_REG read fail\n");
 		return -EIO;	// it is critical problem because interrupt will not occur.
 	}
+
+#if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
+	r_mem = kzalloc(sizeof(char) * (9), GFP_KERNEL);
+
+	if (unlikely(touch_i2c_read(client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0)) {
+		if(r_mem != NULL) kfree(r_mem);
+		TOUCH_ERR_MSG("0x16_REG read fail\n");
+		return -EIO;
+	}
+
+	TOUCH_DEBUG_MSG("JITTER STR REGISTER  is : %d\n", *(r_mem+JITTER_FILTER_STR_REG_OFFSET));
+
+	*(r_mem+JITTER_FILTER_STR_REG_OFFSET) = JITTER_FILTER_STR_VAL;
+
+	if(touch_i2c_write(ts->client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0) {
+		TOUCH_ERR_MSG("0x16_REG write fail\n");
+		if(r_mem != NULL) kfree(r_mem);
+		return -EIO;
+	}
+
+	if (unlikely(touch_i2c_read(client, JITTER_FILTER_STR_REG, (JITTER_FILTER_STR_REG_OFFSET+1), r_mem) < 0)) {
+		TOUCH_ERR_MSG("0x16_REG read fail\n");
+		if(r_mem != NULL) kfree(r_mem);
+		return -EIO;
+	}
+
+	TOUCH_DEBUG_MSG("JITTER STR REGISTER  is : %d\n", *(r_mem+JITTER_FILTER_STR_REG_OFFSET));
+
+	if(r_mem != NULL) kfree(r_mem);
+#endif
 /*
 	if (unlikely(touch_i2c_read(client, OBJECT_TYPE_AND_STATUS_REG, sizeof(ts->ts_data.finger.finger_reg),
 			ts->ts_data.finger.finger_reg) < 0)) {
@@ -1170,12 +1401,20 @@ int synaptics_ts_power(struct i2c_client *client, int power_ctrl)
 	switch (power_ctrl) {
 	case POWER_OFF:
 #ifdef CUST_G2_TOUCH
+#if defined(CONFIG_LGE_VU3_TOUCHSCREEN)
+		if ((ts->pdata->int_pin > 0) && (ts->pdata->reset_pin > 0))  {
+			gpio_tlmm_config(GPIO_CFG(ts->pdata->int_pin, 0, GPIO_CFG_INPUT,
+				GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+			gpio_set_value(ts->pdata->reset_pin, 0);
+		}
+#else
 		if ((ts->pdata->int_pin > 0) && (ts->pdata->reset_pin > 0))  {
 		gpio_tlmm_config(GPIO_CFG(ts->pdata->int_pin, 0, GPIO_CFG_INPUT,
 			GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 		gpio_tlmm_config(GPIO_CFG(ts->pdata->reset_pin, 0, GPIO_CFG_INPUT,
 			GPIO_CFG_PULL_DOWN, GPIO_CFG_6MA), GPIO_CFG_ENABLE);
 		}
+#endif
 #endif
 		if (ts->pdata->pwr->use_regulator) {
 			regulator_disable(ts->regulator_vio);
@@ -1297,10 +1536,16 @@ int synaptics_ts_resolution(struct i2c_client* client) {
 
 	u8 buf[4] = {0,};
 
-	TOUCH_DEBUG_MSG("\n");
 	if (unlikely(touch_i2c_read(ts->client, MAXIMUM_XY_COORDINATE_REG,
 					sizeof(buf), buf) < 0)) {
-		TOUCH_ERR_MSG("MAXIMUM XY COORDINATE read fail\n");
+		TOUCH_ERR_MSG("MAXIMUM XY COORDINATE read fail, use f/w version & board revision info.\n");
+
+		if (get_touch_panel_info(ts) == TOUCH_PANEL_BAR_PATTERN) { /* H_pattern panel */
+			ts->pdata->caps->x_max = 1100;
+			ts->pdata->caps->y_max = 1900;
+		}
+		TOUCH_INFO_MSG("MAXIMUM XY COORDINATE : x = %d\n", ts->pdata->caps->x_max);
+		TOUCH_INFO_MSG("MAXIMUM XY COORDINATE : y = %d\n", ts->pdata->caps->y_max);
 		return -EIO;
 	}
 	ts->pdata->caps->x_max = (int)(buf[1] << 8 | buf[0]);
@@ -1336,7 +1581,7 @@ int synaptics_ts_fw_upgrade(struct i2c_client* client, struct touch_fw_info* fw_
 
 	ts->is_probed = 0;
 
-#if defined(A1_only) && !defined(CONFIG_MACH_MSM8974_G2_KDDI)
+#if defined(A1_only) 
 	if(fw_info->fw_setting.prev_touch_vendor != fw_info->fw_setting.curr_touch_vendor) {
 		TOUCH_INFO_MSG("Panel changed prev_touch_vendor=%d curr_touch_vendor=%d\n", fw_info->fw_setting.prev_touch_vendor, fw_info->fw_setting.curr_touch_vendor);
 		if(unlikely(set_fw_info(ts, fw_info) < 0)) {
@@ -1461,10 +1706,6 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					TOUCH_ERR_MSG("OBJECT_REPORT_ENABLE write fail\n");
 					return -EIO;
 				}
-				if (unlikely(touch_i2c_write_byte(client, FEATURE_ENABLE, 0x0) < 0)) {
-					TOUCH_ERR_MSG("FEATURE_ENABLE write fail\n");
-					return -EIO;
-				}
 				if (unlikely(touch_i2c_write_byte(client, FEATURE_ENABLE, 0x1) < 0)) {
 					TOUCH_ERR_MSG("FEATURE_ENABLE write fail\n");
 					return -EIO;
@@ -1517,11 +1758,28 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					*(r_mem+4) = 0x2;
 					*(r_mem+5) = 0x2;
 
+#if defined(CONFIG_LGE_Z_TOUCHSCREEN)
+
+					if (get_touch_panel_info(ts) == TOUCH_PANEL_H_PATTERN) { /* H_pattern panel */
+						if(touch_i2c_write(ts->client, WAKEUP_GESTURE_ENABEL_REG,(6), r_mem) < 0) {
+							TOUCH_ERR_MSG("WAKEUP_GESTURE_ENABEL_REG write fail");
+							if(r_mem != NULL) kfree(r_mem);
+							return -EIO;
+						}
+					} else { /* Bar_pattern panel */
+						if(touch_i2c_write(ts->client, WAKEUP_GESTURE_ENABEL_REG,(1), r_mem) < 0) {
+							TOUCH_ERR_MSG("WAKEUP_GESTURE_ENABEL_REG write fail");
+							if(r_mem != NULL) kfree(r_mem);
+							return -EIO;
+						}
+					}
+#else
 					if(touch_i2c_write(ts->client, WAKEUP_GESTURE_ENABEL_REG,(6), r_mem) < 0) {
 						TOUCH_ERR_MSG("WAKEUP_GESTURE_ENABEL_REG write fail");
 						if(r_mem != NULL) kfree(r_mem);
 						return -EIO;
 					}
+#endif
 					if(touch_i2c_write_byte(ts->client, DOZE_INTERVAL_REG, 5) < 0) {
 						TOUCH_ERR_MSG("DOZE_INTERVAL_REG write fail");
 						if(r_mem != NULL) kfree(r_mem);
@@ -1540,6 +1798,29 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 						if(touch_i2c_write(ts->client, REPORT_WAKEUP_GESTURE_ONLY_REG,(3), r_mem) < 0)
 							TOUCH_ERR_MSG("REPORT_WAKEUP_GESTURE_ONLY_REG write fail");
 					}
+#if defined(CONFIG_LGE_Z_TOUCHSCREEN)
+					if (get_touch_panel_info(ts) == TOUCH_PANEL_H_PATTERN) { /* resolution = 720*1280 */
+						*(r_mem+0) = 0x4c;
+						*(r_mem+1) = 0x00;
+						*(r_mem+2) = 0x00;
+						*(r_mem+3) = 0x00;
+						*(r_mem+4) = 0x84;
+						*(r_mem+5) = 0x02;
+						*(r_mem+6) = 0x00;
+						*(r_mem+7) = 0x05;
+						*(r_mem+8) = 60;
+					} else { /* resolution = 1100*1900 */
+						*(r_mem+0) = 0x82;
+						*(r_mem+1) = 0x0;
+						*(r_mem+2) = 0x0;
+						*(r_mem+3) = 0x0;
+						*(r_mem+4) = 0xB6;
+						*(r_mem+5) = 0x3;
+						*(r_mem+6) = 0x6c;
+						*(r_mem+7) = 0x7;
+						*(r_mem+8) = 60;
+					}
+#else
 					*(r_mem+0) = 0x82;
 					*(r_mem+1) = 0x0;
 					*(r_mem+2) = 0x0;
@@ -1549,6 +1830,7 @@ int synaptics_ts_ic_ctrl(struct i2c_client *client, u8 code, u16 value)
 					*(r_mem+6) = 0x80;
 					*(r_mem+7) = 0x7;
 					*(r_mem+8) = 60;
+#endif
 					if(touch_i2c_write(ts->client, DOUBLE_TAP_AREA_REG,(9), r_mem) < 0)
 						TOUCH_ERR_MSG("DOUBLE_TAP_AREA_REG write fail");
 					if(r_mem != NULL) kfree(r_mem);

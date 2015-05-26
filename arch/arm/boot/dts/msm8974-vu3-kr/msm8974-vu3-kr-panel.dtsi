@@ -28,7 +28,10 @@
 		qcom,cont-splash-enabled;
 		qcom,mdss-pan-res = <960 1280>;
 		qcom,mdss-pan-porch-values = <150 4 179 9 1 3>;
-		qcom,mdss-pan-dsi-t-clk = <0x21 0x3C>;
+		qcom,mdss-pan-dsi-t-clk = <0x1F 0x2F>;
+		qcom,panel-phy-timingSettings = [
+		8F 2F 25 00 43 4B
+		2A 31 3C 03 04 00];
 		qcom,panel-on-cmds = [
 			29 01 00 00 00 00 02 b0 04  // changed it to 29
 			05 01 00 00 00 00 01 00
@@ -134,7 +137,7 @@
 			c8 10 10 3f 3f
 			3f 3f
 			29 01 00 00 00 00 03 dd
-			11 15
+			01 95
 			05 01 00 00 00 00 01 29
 			05 01 00 00 78 00 01 11
 			];
@@ -173,7 +176,7 @@
 			c8 10 10 3f 3f
 			3f 3f
 			29 01 00 00 00 00 03 dd
-			11 15
+			01 95
 			29 01 00 00 00 00 02 b0 03
 			];
 	};

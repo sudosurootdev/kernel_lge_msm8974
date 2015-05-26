@@ -58,7 +58,8 @@
 
 #define MAX_BAM_DESCRIPTOR_COUNT	(8 * 1024 - 2)
 
-#define TSPP_BUFFER_SIZE		(500 * 1024) /* 500KB */
+//#define TSPP_BUFFER_SIZE		(500 * 1024) /* 500KB */
+#define TSPP_BUFFER_SIZE (3 * 500 * 1024) /* max TSPP out buffer size is about 1.5MB, QCT, Customer Support Case Number: 01281530, 8/29/2013 */
 
 #define TSPP_DESCRIPTOR_SIZE	(TSPP_RAW_TTS_SIZE)
 

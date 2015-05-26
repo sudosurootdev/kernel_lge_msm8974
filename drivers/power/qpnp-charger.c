@@ -26,6 +26,10 @@ int r_sense_uohm ;
 #define BOOT_MODE_CHARGERLOGO 2
 int vbatdet = 0 ;
 int count_count = 0 ;
+int eoc_count = 0 ;
+int eoc_status = 0 ;
+#define VBATDET_LEVEL 4250
+#define VBATDET_LEVEL_HIGH 4400
 #endif
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -894,7 +898,7 @@ qpnp_chg_vbatdet_set(struct qpnp_chg_chip *chip, int vbatdet_mv)
 	temp = (vbatdet_mv - QPNP_CHG_VBATDET_MIN_MV)
 			/ QPNP_CHG_VBATDET_STEP_MV;
 
-	pr_debug("voltage=%d setting %02x\n", vbatdet_mv, temp);
+	pr_info("voltage=%d setting %02x\n", vbatdet_mv, temp);
 	return qpnp_chg_write(chip, &temp,
 		chip->chgr_base + CHGR_VBAT_DET, 1);
 }
@@ -938,14 +942,14 @@ qpnp_chg_vbatdet_lo_irq_handler(int irq, void *_chip)
 	if (rc)
 		pr_err("failed to read chg_sts rc=%d\n", rc);
 
+	pr_info("vbat_det_low %lu vbat_det_hi %lu \n", chg_sts & VBAT_DET_LOW_IRQ, chg_sts & VBAT_DET_HI_IRQ);
 	pr_info("chg_done chg_sts: 0x%x triggered\n", chg_sts);
 	if (!chip->charging_disabled || (chg_sts & FAST_CHG_ON_IRQ)) {
 		schedule_delayed_work(&chip->eoc_work,
 			msecs_to_jiffies(200));
 #ifdef LG_TEMP
 			boot_mode = lge_get_boot_mode();
-//			if( boot_mode != BOOT_MODE_CHARGERLOGO )
-			if( 0 )
+			if( boot_mode != BOOT_MODE_CHARGERLOGO )
 				wake_lock(&chip->eoc_wake_lock);
 #else
 				wake_lock(&chip->eoc_wake_lock);
@@ -972,6 +976,8 @@ qpnp_chg_usb_chg_gone_irq_handler(int irq, void *_chip)
 	if (qpnp_chg_is_usb_chg_plugged_in(chip)) {
 		qpnp_chg_charge_en(chip, 0);
 		qpnp_chg_force_run_on_batt(chip, 1);
+	if (chip->chg_done)
+	qpnp_chg_vbatdet_lo_irq_handler(VBAT_DET_LOW_IRQ, chip);
 		schedule_delayed_work(&chip->arb_stop_work,
 			msecs_to_jiffies(ARB_STOP_WORK_MS));
 	}
@@ -1097,7 +1103,8 @@ qpnp_usbin_valid_work(struct work_struct *work)
         count_count = 0 ;
 		chip->usb_present = usb_present;
 #ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
-             schedule_delayed_work(&chip->battemp_work, HZ*1);
+		__cancel_delayed_work(&chip->battemp_work);
+		schedule_delayed_work(&chip->battemp_work, HZ*1);
 #endif
 #ifdef CONFIG_LGE_PM
         if (usb_present)
@@ -1109,6 +1116,12 @@ qpnp_usbin_valid_work(struct work_struct *work)
         {
             qpnp_chg_usb_suspend_enable(chip, 1);
             chip->chg_done = false;
+			rc	= qpnp_chg_vbatdet_set(chip, VBATDET_LEVEL);
+			if (rc)
+			pr_info("failed 3 setting resume_voltage rc=%d\n", rc);
+
+			eoc_count = 0 ;
+			eoc_status = 0 ;
 #ifdef CONFIG_LGE_CHARGER_TEMP_SCENARIO
              if(wake_lock_active(&chip->lcs_wake_lock))
                  wake_unlock(&chip->lcs_wake_lock);
@@ -2702,7 +2715,7 @@ qpnp_eoc_work(struct work_struct *work)
 	int capacity= 0 ;
 #ifdef LG_TEMP
 	 u8 chg_ctrl = 0 ;
-//	int boot_mode = 0 ;
+	int boot_mode = 0 ;
 #endif
 	if( ( (chip->eoc_wake_lock.ws.name) != NULL ) && ( !wake_lock_active( &chip->eoc_wake_lock )))
 		wake_lock(&chip->eoc_wake_lock);
@@ -2738,6 +2751,7 @@ qpnp_eoc_work(struct work_struct *work)
 
 	pr_info("chg_sts: 0x%x, batt_sts: 0x%x, buck_sts: 0x%x\n",
 		chg_sts, batt_sts, buck_sts);
+	pr_info("vbat_det_low %lu vbat_det_hi %lu eoc_count %d \n", chg_sts & VBAT_DET_LOW_IRQ, chg_sts & VBAT_DET_HI_IRQ, eoc_count );
 
 	if (!qpnp_chg_is_usb_chg_plugged_in(chip) &&
 			!qpnp_chg_is_dc_chg_plugged_in(chip)) {
@@ -2752,6 +2766,14 @@ qpnp_eoc_work(struct work_struct *work)
 		vbat_mv = get_prop_battery_voltage_now(chip) / 1000;
 		capacity = get_prop_capacity(chip);
 
+	if ( ( eoc_count == 1 ) &&  ( ( chg_sts & FAST_CHG_ON_IRQ ) == 0 ) )
+	{
+		rc =  qpnp_chg_vbatdet_set(chip, VBATDET_LEVEL_HIGH);
+			if (rc)
+			pr_info("failed 1 setting resume_voltage rc=%d\n", rc);
+			else
+			eoc_status = eoc_count ;
+	}
 		pr_debug("ibat_ma = %d vbat_mv = %d term_current_ma = %d\n",
 				ibat_ma, vbat_mv, chip->term_current);
 #ifdef CONFIG_LGE_PM
@@ -2768,31 +2790,68 @@ qpnp_eoc_work(struct work_struct *work)
 			pr_info("Charging but system demand increased\n");
 			count = 0;
 		} else {
-			if (count == CONSECUTIVE_COUNT) {
-				pr_info("End of Charging\n");
-				vbatdet = 0 ;
-				qpnp_chg_charge_en(chip, 0);
-				power_supply_changed(&chip->batt_psy);
-				qpnp_chg_enable_irq(&chip->chg_vbatdet_lo);
-				chip->chg_done = true;
+				if (count == CONSECUTIVE_COUNT) {
+					if ( eoc_status == 0 )
+					{
+						vbatdet = 0 ;
+						pr_info("End of Charging\n");
+						qpnp_chg_charge_en(chip, 0);
+						power_supply_changed(&chip->batt_psy);
+						qpnp_chg_enable_irq(&chip->chg_vbatdet_lo);
+						chip->chg_done = true;
 #ifdef LG_TEMP
-//				boot_mode = lge_get_boot_mode();
-//				if( boot_mode == BOOT_MODE_CHARGERLOGO )
-//				    goto stop_eoc_chargerlogo ;
-				    goto stop_eoc_chargerlogo ;
+						boot_mode = lge_get_boot_mode();
+						if( boot_mode == BOOT_MODE_CHARGERLOGO )
+						goto stop_eoc_chargerlogo ;
+						goto stop_eoc ;
 #else
-					goto stop_eoc;
+						goto stop_eoc ;
 #endif
-			} else if ( (vbat_mv > 4300) && (capacity >= 100) ){
-				count += 1;
-				pr_info("EOC count = %d\n", count);
-			}
+				    }
+					else if ( eoc_status == 1 )
+					{
+					rc = qpnp_chg_vbatdet_set(chip, VBATDET_LEVEL);
+					if (rc)
+			             pr_info("failed 2 setting resume_voltage rc=%d\n", rc);
+
+					if ( (vbat_mv > 4300) && (capacity >= 100) )
+						 count +=1 ;
+				    }
+				}
+				else if ( count == 4 ) {
+					vbatdet = 0 ;
+					pr_info("EOC count = %d\n", count);
+					pr_info("End of Charging\n");
+					qpnp_chg_charge_en(chip, 0);
+					power_supply_changed(&chip->batt_psy);
+					qpnp_chg_enable_irq(&chip->chg_vbatdet_lo);
+					chip->chg_done = true;
+#ifdef LG_TEMP
+					boot_mode = lge_get_boot_mode();
+					if( boot_mode == BOOT_MODE_CHARGERLOGO )
+				    goto stop_eoc_chargerlogo ;
+				    goto stop_eoc ;
+#else
+					goto stop_eoc ;
+#endif
+				}
+				else if ( (vbat_mv > 4300) && (capacity >= 100) ){
+					count += 1;
+					pr_info("EOC count = %d\n", count);
+				}
 		}
 	} else {
 		pr_info("not charging\n");
 			goto stop_eoc;
 	}
 
+	if (eoc_count <= 1 )
+	   eoc_count += 1 ;
+
+	if ( count == 4 )
+	schedule_delayed_work(&chip->eoc_work,
+		msecs_to_jiffies(15000));
+	else
 	schedule_delayed_work(&chip->eoc_work,
 		msecs_to_jiffies(EOC_CHECK_PERIOD_MS));
 	return;
@@ -3010,7 +3069,7 @@ qpnp_chg_request_irqs(struct qpnp_chg_chip *chip)
 			rc |= devm_request_irq(chip->dev,
 				chip->chg_vbatdet_lo.irq,
 				qpnp_chg_vbatdet_lo_irq_handler,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+				IRQF_TRIGGER_FALLING,
 				"vbat-det-lo", chip);
 			if (rc < 0) {
 				pr_err("Can't request %d vbat-det-lo: %d\n",
@@ -3774,8 +3833,10 @@ static void qpnp_monitor_batt_temp(struct work_struct *work)
 		}
 #ifdef CONFIG_LGE_THERMALE_CHG_CONTROL
 		else if (res.force_update == true && res.state == CHG_BATT_NORMAL_STATE &&
-					res.dc_current != DC_CURRENT_DEF)
+					res.dc_current != DC_CURRENT_DEF) {
 			qpnp_chg_ibatmax_set(chip,res.dc_current);
+			qpnp_chg_charge_pause(chip, res.disable_chg);
+			}
 #endif
 
 		chip->pseudo_ui_chg = res.pseudo_chg_ui;

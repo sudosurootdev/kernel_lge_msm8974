@@ -27,6 +27,7 @@
 #include <linux/err.h>
 #include <linux/async.h>
 #include <linux/slimport.h>
+#include <linux/zwait.h>
 
 #include "slimport_tx_drv.h"
 #ifdef CONFIG_SLIMPORT_DYNAMIC_HPD
@@ -76,6 +77,8 @@ struct anx7808_data {
 	struct workqueue_struct    *workqueue;
 	struct mutex    lock;
 	struct wake_lock slimport_lock;
+	struct delayed_work dwc3_ref_clk_work;
+	bool slimport_connected;
 };
 
 static unsigned int cable_smem_size;
@@ -344,7 +347,7 @@ static ssize_t anx7808_write_reg_store(struct device *dev, struct device_attribu
 	char op, i;
 	char r[3];
 	char v[3];
-	unchar tmp = 0;
+	unchar tmp;
 	int id, reg, val = 0 ;
 
 	if (sp_tx_system_state != STATE_PLAY_BACK){
@@ -1088,6 +1091,16 @@ static int anx7808_system_init(void)
 	return 0;
 }
 
+extern void dwc3_ref_clk_set(bool);
+static void dwc3_ref_clk_work_func(struct work_struct *work)
+{
+	struct anx7808_data *td = container_of(work, struct anx7808_data,
+						dwc3_ref_clk_work.work);
+	if(td->slimport_connected)
+		dwc3_ref_clk_set(true);
+	else
+		dwc3_ref_clk_set(false);
+}
 static irqreturn_t anx7808_cbl_det_isr(int irq, void *data)
 {
 	struct anx7808_data *anx7808 = data;
@@ -1095,9 +1108,17 @@ static irqreturn_t anx7808_cbl_det_isr(int irq, void *data)
 	if (gpio_get_value(anx7808->pdata->gpio_cbl_det)) {
 		wake_lock(&anx7808->slimport_lock);
 		pr_info("%s %s : detect cable insertion\n", LOG_TAG, __func__);
+		if (!anx7808->slimport_connected) {
+			anx7808->slimport_connected = true;
+			queue_delayed_work(anx7808->workqueue, &anx7808->dwc3_ref_clk_work, 0);
+		}
 		queue_delayed_work(anx7808->workqueue, &anx7808->work, 0);
 	} else {
 		pr_info("%s %s : detect cable removal\n", LOG_TAG, __func__);
+		if (anx7808->slimport_connected) {
+			anx7808->slimport_connected = false;
+			queue_delayed_work(anx7808->workqueue, &anx7808->dwc3_ref_clk_work, 0);
+		}
 		cancel_delayed_work_sync(&anx7808->work);
 		wake_unlock(&anx7808->slimport_lock);
 		wake_lock_timeout(&anx7808->slimport_lock, 2*HZ);
@@ -1283,6 +1304,43 @@ int anx7808_get_sbl_cable_type(void)
 	return cable_type;
 }
 
+#ifdef CONFIG_ZERO_WAIT
+static int zw_slimport_notifier_call(struct notifier_block *nb,
+			unsigned long state, void *ptr)
+{
+	struct anx7808_data *anx7808 = (struct anx7808_data *)nb->ptr;
+
+	switch (state) {
+	case ZW_STATE_OFF:
+		if (gpio_get_value(anx7808->pdata->gpio_cbl_det)) {
+			wake_lock(&anx7808->slimport_lock);
+			anx7808->slimport_connected = true;
+			dwc3_ref_clk_set(true);
+			queue_delayed_work(anx7808->workqueue,
+						&anx7808->work, 0);
+		}
+		break;
+
+	case ZW_STATE_ON_SYSTEM:
+	case ZW_STATE_ON_USER:
+		if (anx7808->slimport_connected) {
+			/* we must go to suspend in the ZeroWait mdoe*/
+			dwc3_ref_clk_set(false);
+			cancel_delayed_work_sync(&anx7808->work);
+			anx7808->slimport_connected = false;
+			wake_unlock(&anx7808->slimport_lock);
+		}
+		break;
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block zw_slimport_nb = {
+	.notifier_call = zw_slimport_notifier_call,
+};
+#endif /* CONFIG_ZERO_WAIT */
+
 static int anx7808_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1358,6 +1416,7 @@ static int anx7808_i2c_probe(struct i2c_client *client,
 	}
 
 	INIT_DELAYED_WORK(&anx7808->work, anx7808_work_func);
+	INIT_DELAYED_WORK(&anx7808->dwc3_ref_clk_work, dwc3_ref_clk_work_func);
 
 	anx7808->workqueue = create_singlethread_workqueue("anx7808_work");
 	if (anx7808->workqueue == NULL) {
@@ -1444,6 +1503,11 @@ static int anx7808_i2c_probe(struct i2c_client *client,
 	}
 #endif
 
+#ifdef CONFIG_ZERO_WAIT
+	zw_irqs_info_register(client->irq, 1);
+	zw_notifier_chain_register(&zw_slimport_nb, anx7808);
+#endif
+
 	goto exit;
 
 err3:
@@ -1463,6 +1527,12 @@ static int anx7808_i2c_remove(struct i2c_client *client)
 {
 	struct anx7808_data *anx7808 = i2c_get_clientdata(client);
 	int i = 0;
+
+#ifdef CONFIG_ZERO_WAIT
+	zw_irqs_info_unregister(client->irq);
+	zw_notifier_chain_unregister(&zw_slimport_nb);
+#endif
+
 	for (i = 0; i < ARRAY_SIZE(slimport_device_attrs); i++)
 		device_remove_file(&client->dev, &slimport_device_attrs[i]);
 	free_irq(client->irq, anx7808);

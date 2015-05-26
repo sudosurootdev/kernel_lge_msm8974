@@ -482,16 +482,11 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 
 	start_rate = clk->rate;
 
-	if (clk->ops->pre_set_rate)
-		rc = clk->ops->pre_set_rate(clk, rate);
-	if (rc)
-		goto out;
-
 	/* Enforce vdd requirements for target frequency. */
 	if (clk->prepare_count) {
 		rc = vote_rate_vdd(clk, rate);
 		if (rc)
-			goto err_vote_vdd;
+			goto out;
 	}
 
 	rc = clk->ops->set_rate(clk, rate);
@@ -503,9 +498,6 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	if (clk->prepare_count)
 		unvote_rate_vdd(clk, start_rate);
 
-	if (clk->ops->post_set_rate)
-		clk->ops->post_set_rate(clk, start_rate);
-
 out:
 	mutex_unlock(&clk->prepare_lock);
 	return rc;
@@ -513,10 +505,6 @@ out:
 err_set_rate:
 	if (clk->prepare_count)
 		unvote_rate_vdd(clk, rate);
-err_vote_vdd:
-	/* clk->rate is still the old rate. So, pass the new rate instead. */
-	if (clk->ops->post_set_rate)
-		clk->ops->post_set_rate(clk, rate);
 	goto out;
 }
 EXPORT_SYMBOL(clk_set_rate);

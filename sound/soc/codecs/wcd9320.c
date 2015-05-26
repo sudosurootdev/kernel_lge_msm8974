@@ -1200,132 +1200,6 @@ static const struct soc_enum class_h_dsm_enum =
 static const struct snd_kcontrol_new class_h_dsm_mux =
 	SOC_DAPM_ENUM("CLASS_H_DSM MUX Mux", class_h_dsm_enum);
 
-static const char *const taiko_conn_mad_text[] = {
-	"ADC_MB", "ADC1", "ADC2", "ADC3", "ADC4", "ADC5", "ADC6", "NOTUSED1",
-	"DMIC1", "DMIC2", "DMIC3", "DMIC4", "DMIC5", "DMIC6", "NOTUSED2",
-	"NOTUSED3"};
-
-static const struct soc_enum taiko_conn_mad_enum =
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(taiko_conn_mad_text),
-			taiko_conn_mad_text);
-
-
-static int taiko_mad_input_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	u8 taiko_mad_input;
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-
-	taiko_mad_input = snd_soc_read(codec, TAIKO_A_CDC_CONN_MAD);
-
-	taiko_mad_input = taiko_mad_input & 0x0F;
-
-	ucontrol->value.integer.value[0] = taiko_mad_input;
-
-	pr_debug("%s: taiko_mad_input = %s\n", __func__,
-			taiko_conn_mad_text[taiko_mad_input]);
-
-	return 0;
-}
-
-static int taiko_mad_input_put(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	u8 taiko_mad_input;
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct snd_soc_card *card = codec->card;
-	char mad_amic_input_widget[6];
-	u32 adc;
-	const char *mad_input_widget;
-	u32  mic_bias_found = 0;
-	u32 i;
-	int ret = 0;
-	char *mad_input;
-
-	taiko_mad_input = ucontrol->value.integer.value[0];
-
-	pr_debug("%s: taiko_mad_input = %s\n", __func__,
-			taiko_conn_mad_text[taiko_mad_input]);
-
-	if (!strcmp(taiko_conn_mad_text[taiko_mad_input], "NOTUSED1") ||
-		!strcmp(taiko_conn_mad_text[taiko_mad_input], "NOTUSED2") ||
-		!strcmp(taiko_conn_mad_text[taiko_mad_input], "NOTUSED3") ||
-		!strcmp(taiko_conn_mad_text[taiko_mad_input], "ADC_MB")) {
-		pr_info("%s: taiko mad input is set to unsupported input = %s\n",
-				__func__, taiko_conn_mad_text[taiko_mad_input]);
-		return -EINVAL;
-	}
-
-	if (strnstr(taiko_conn_mad_text[taiko_mad_input],
-				"ADC", sizeof("ADC"))) {
-		mad_input = strpbrk(taiko_conn_mad_text[taiko_mad_input],
-				"123456");
-		if (!mad_input) {
-			dev_err(codec->dev, "%s: Invalid MAD input = %s\n",
-			__func__, taiko_conn_mad_text[taiko_mad_input]);
-			return -EINVAL;
-		}
-		ret = kstrtouint(mad_input, 10, &adc);
-		if ((ret < 0) || (adc > 6)) {
-			pr_err("%s: Invalid ADC = %s\n", __func__,
-				taiko_conn_mad_text[taiko_mad_input]);
-			ret =  -EINVAL;
-		}
-
-		snprintf(mad_amic_input_widget, 6, "%s%u", "AMIC", adc);
-
-		mad_input_widget = mad_amic_input_widget;
-		pr_debug("%s: taiko amic input widget = %s\n", __func__,
-			  mad_amic_input_widget);
-	} else {
-		/* DMIC type input widget*/
-		mad_input_widget = taiko_conn_mad_text[taiko_mad_input];
-	}
-
-	pr_debug("%s: taiko input widget = %s\n", __func__, mad_input_widget);
-
-	for (i = 0; i < card->num_dapm_routes; i++) {
-
-		if (!strncmp(card->dapm_routes[i].sink,
-				mad_input_widget, strlen(mad_input_widget))) {
-
-			if (strnstr(card->dapm_routes[i].source,
-				"MIC BIAS1", sizeof("MIC BIAS1"))) {
-				mic_bias_found = 1;
-				break;
-			} else if (strnstr(card->dapm_routes[i].source,
-				"MIC BIAS2", sizeof("MIC BIAS2"))) {
-				mic_bias_found = 2;
-				break;
-			} else if (strnstr(card->dapm_routes[i].source,
-				"MIC BIAS3", sizeof("MIC BIAS3"))) {
-				mic_bias_found = 3;
-				break;
-			} else if (strnstr(card->dapm_routes[i].source,
-				"MIC BIAS4", sizeof("MIC BIAS4"))) {
-				mic_bias_found = 4;
-				break;
-			}
-		}
-	}
-
-	if (mic_bias_found) {
-		pr_debug("%s: source mic bias = %s. sink = %s\n", __func__,
-				card->dapm_routes[i].source,
-				card->dapm_routes[i].sink);
-
-		snd_soc_update_bits(codec, TAIKO_A_CDC_CONN_MAD,
-					0x0F, taiko_mad_input);
-		snd_soc_update_bits(codec, TAIKO_A_MAD_ANA_CTRL,
-					0x07, mic_bias_found);
-		return 0;
-	} else {
-		pr_err("%s: mic bias source not found for input = %s\n",
-				__func__, mad_input_widget);
-		return -EINVAL;
-	}
-}
-
 
 static const struct snd_kcontrol_new taiko_snd_controls[] = {
 
@@ -1515,9 +1389,6 @@ static const struct snd_kcontrol_new taiko_snd_controls[] = {
 		       taiko_get_compander, taiko_set_compander),
 	SOC_SINGLE_EXT("COMP2 Switch", SND_SOC_NOPM, COMPANDER_2, 1, 0,
 		       taiko_get_compander, taiko_set_compander),
-
-	SOC_ENUM_EXT("MAD Input", taiko_conn_mad_enum,
-			taiko_mad_input_get, taiko_mad_input_put),
 
 };
 
@@ -2007,7 +1878,6 @@ static int wcd9320_put_dec_enum(struct snd_kcontrol *kcontrol,
 	u16 tx_mux_ctl_reg;
 	u8 adc_dmic_sel = 0x0;
 	int ret = 0;
-	char *dec;
 
 	if (ucontrol->value.enumerated.item[0] > e->max - 1)
 		return -EINVAL;
@@ -2026,14 +1896,8 @@ static int wcd9320_put_dec_enum(struct snd_kcontrol *kcontrol,
 		ret =  -EINVAL;
 		goto out;
 	}
-	dec = strpbrk(dec_name, "123456789");
-	if (!dec) {
-		dev_err(w->dapm->dev, "%s: decimator index not found\n",
-			__func__);
-		ret =  -EINVAL;
-		goto out;
-	}
-	ret = kstrtouint(dec, 10, &decimator);
+
+	ret = kstrtouint(strpbrk(dec_name, "123456789"), 10, &decimator);
 	if (ret < 0) {
 		pr_err("%s: Invalid decimator = %s\n", __func__, dec_name);
 		ret =  -EINVAL;
@@ -2631,14 +2495,8 @@ static int taiko_codec_enable_dmic(struct snd_soc_dapm_widget *w,
 	s32 *dmic_clk_cnt;
 	unsigned int dmic;
 	int ret;
-	char *wname;
 
-	wname = strpbrk(w->name, "123456");
-	if (!wname) {
-		dev_err(codec->dev, "%s: widget not found\n", __func__);
-		return -EINVAL;
-	}
-	ret = kstrtouint(wname, 10, &dmic);
+	ret = kstrtouint(strpbrk(w->name, "123456"), 10, &dmic);
 	if (ret < 0) {
 		pr_err("%s: Invalid DMIC line on the codec\n", __func__);
 		return -EINVAL;
@@ -2729,6 +2587,8 @@ static int taiko_codec_config_mad(struct snd_soc_codec *codec)
 		return -EINVAL;
 	}
 
+	snd_soc_update_bits(codec, TAIKO_A_CDC_CONN_MAD,
+			    0x0F, mad_cal->microphone_info.input_microphone);
 	snd_soc_write(codec, TAIKO_A_CDC_MAD_MAIN_CTL_2,
 		      mad_cal->microphone_info.cycle_time);
 	snd_soc_update_bits(codec, TAIKO_A_CDC_MAD_MAIN_CTL_1, 0xFF << 3,
@@ -2987,7 +2847,7 @@ static int taiko_codec_enable_dec(struct snd_soc_dapm_widget *w,
 	u16 dec_reset_reg, tx_vol_ctl_reg, tx_mux_ctl_reg;
 	u8 dec_hpf_cut_of_freq;
 	int offset;
-	char *dec;
+
 
 	pr_debug("%s %d\n", __func__, event);
 
@@ -3004,15 +2864,7 @@ static int taiko_codec_enable_dec(struct snd_soc_dapm_widget *w,
 		goto out;
 	}
 
-	dec = strpbrk(dec_name, "123456789");
-	if (!dec) {
-		dev_err(codec->dev, "%s: decimator index not found\n",
-			__func__);
-		ret =  -EINVAL;
-		goto out;
-	}
-
-	ret = kstrtouint(dec, 10, &decimator);
+	ret = kstrtouint(strpbrk(dec_name, "123456789"), 10, &decimator);
 	if (ret < 0) {
 		pr_err("%s: Invalid decimator = %s\n", __func__, dec_name);
 		ret =  -EINVAL;
@@ -4188,18 +4040,6 @@ static int taiko_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 	if (reg == TAIKO_A_RX_HPH_L_STATUS || reg == TAIKO_A_RX_HPH_R_STATUS)
 		return 1;
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-#ifndef CONFIG_MACH_LGE
-	/* HPH gain registers */
-	if (reg == TAIKO_A_RX_HPH_L_GAIN || reg == TAIKO_A_RX_HPH_R_GAIN)
-		return 1;
-#endif
-#endif
-
-	/* HPH PA Enable */
-	if (reg == TAIKO_A_RX_HPH_CNP_EN)
-		return 1;
-
 	if (reg == TAIKO_A_MBHC_INSERT_DET_STATUS)
 		return 1;
 
@@ -4224,16 +4064,26 @@ static int taiko_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 	return 0;
 }
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-extern int snd_hax_reg_access(unsigned int);
-extern unsigned int snd_hax_cache_read(unsigned int);
-extern void snd_hax_cache_write(unsigned int, unsigned int);
-#endif
+static int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
+	unsigned int value)
+{
+	int ret;
 
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
-static
-#endif
-unsigned int taiko_read(struct snd_soc_codec *codec,
+	if (reg == SND_SOC_NOPM)
+		return 0;
+
+	BUG_ON(reg > TAIKO_MAX_REGISTER);
+
+	if (!taiko_volatile(codec, reg)) {
+		ret = snd_soc_cache_write(codec, reg, value);
+		if (ret != 0)
+			dev_err(codec->dev, "Cache write to %x failed: %d\n",
+				reg, ret);
+	}
+
+	return wcd9xxx_reg_write(codec->control_data, reg, value);
+}
+static unsigned int taiko_read(struct snd_soc_codec *codec,
 				unsigned int reg)
 {
 	unsigned int val;
@@ -4257,50 +4107,6 @@ unsigned int taiko_read(struct snd_soc_codec *codec,
 	val = wcd9xxx_reg_read(codec->control_data, reg);
 	return val;
 }
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(taiko_read);
-#endif
-
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
-static
-#endif
-int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
-	unsigned int value)
-{
-	int ret;
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	int val;
-#endif
-
-	if (reg == SND_SOC_NOPM)
-		return 0;
-
-	BUG_ON(reg > TAIKO_MAX_REGISTER);
-
-	if (!taiko_volatile(codec, reg)) {
-		ret = snd_soc_cache_write(codec, reg, value);
-		if (ret != 0)
-			dev_err(codec->dev, "Cache write to %x failed: %d\n",
-				reg, ret);
-	}
-
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	if (!snd_hax_reg_access(reg)) {
-		if (!((val = snd_hax_cache_read(reg)) != -1)) {
-			val = wcd9xxx_reg_read_safe(codec->control_data, reg);
-		}
-	} else {
-		snd_hax_cache_write(reg, value);
-		val = value;
-	}
-	return wcd9xxx_reg_write(codec->control_data, reg, val);
-#else
-	return wcd9xxx_reg_write(codec->control_data, reg, value);
-#endif
-}
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(taiko_write);
-#endif
 
 static int taiko_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
@@ -4406,9 +4212,8 @@ static int taiko_set_channel_map(struct snd_soc_dai *dai,
 	struct wcd9xxx_codec_dai_data *dai_data = NULL;
 	struct taiko_priv *taiko = snd_soc_codec_get_drvdata(dai->codec);
 	struct wcd9xxx *core = dev_get_drvdata(dai->codec->dev->parent);
-	if (!tx_slot || !rx_slot) {
-		pr_err("%s: Invalid tx_slot=%p, rx_slot=%p\n", __func__,
-			tx_slot, rx_slot);
+	if (!tx_slot && !rx_slot) {
+		pr_err("%s: Invalid\n", __func__);
 		return -EINVAL;
 	}
 	pr_debug("%s(): dai_name = %s DAI-ID %x tx_ch %d rx_ch %d\n"
@@ -6446,9 +6251,6 @@ static const struct wcd9xxx_reg_mask_val taiko_codec_reg_init_val[] = {
 
 	/* Program the 0.85 volt VBG_REFERENCE */
 	{TAIKO_A_BIAS_CURR_CTL_2, 0xFF, 0x04},
-
-	/* set MAD input MIC to DMIC1 */
-	{TAIKO_A_CDC_CONN_MAD, 0x0F, 0x08},
 };
 
 static void taiko_codec_init_reg(struct snd_soc_codec *codec)
@@ -6693,13 +6495,6 @@ static struct regulator *taiko_codec_find_regulator(struct snd_soc_codec *codec,
 	return NULL;
 }
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-struct snd_soc_codec *fauxsound_codec_ptr;
-EXPORT_SYMBOL(fauxsound_codec_ptr);
-int wcd9xxx_hw_revision;
-EXPORT_SYMBOL(wcd9xxx_hw_revision);
-#endif
-
 static int taiko_codec_probe(struct snd_soc_codec *codec)
 {
 	struct wcd9xxx *control;
@@ -6712,20 +6507,8 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 	void *ptr = NULL;
 	struct wcd9xxx *core = dev_get_drvdata(codec->dev->parent);
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	pr_info("taiko codec probe...\n");
-	fauxsound_codec_ptr = codec;
-#endif
-
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;
-
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	if (TAIKO_IS_1_0(control->version))
-		wcd9xxx_hw_revision = 1;
-	else
-		wcd9xxx_hw_revision = 2;
-#endif
 
 	wcd9xxx_ssr_register(control, taiko_post_reset_cb, (void *)codec);
 

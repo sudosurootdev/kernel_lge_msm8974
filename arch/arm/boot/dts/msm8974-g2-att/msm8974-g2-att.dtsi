@@ -112,7 +112,6 @@
 				1 &intc 0 220 0
 				2 &msmgpio 35 0x3>;
 		interrupt-names = "core_irq", "bam_irq", "wlan_oob_irq";
-		qcom,wifi-control-func;
 
 		vdd-supply = <&pm8941_l21>;
 		vdd-io-supply = <&pm8941_l13>;
@@ -132,7 +131,7 @@
 		qcom,sup-voltages = <2950 2950>;
 		qcom,bus-width = <4>;
 		qcom,xpc;
-		qcom,nonremovable;
+		/*qcom,nonremovable;*/
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "SDR104";
 		qcom,current-limit = <800>;
 
@@ -170,7 +169,6 @@
 				1 &intc 0 220 0
 				2 &msmgpio 74 0x3>;
 		interrupt-names = "core_irq", "bam_irq", "wlan_oob_irq";
-		qcom,wifi-control-func;
 
 		vdd-supply = <&pm8941_l21>;
 		vdd-io-supply = <&pm8941_l13>;
@@ -190,7 +188,7 @@
 		qcom,sup-voltages = <2950 2950>;
 		qcom,bus-width = <4>;
 		qcom,xpc;
-		qcom,nonremovable;
+		/*qcom,nonremovable;*/
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "SDR104";
 		qcom,current-limit = <800>;
 
@@ -228,7 +226,6 @@
 				1 &intc 0 220 0
 				2 &msmgpio 44 0x3>;
 		interrupt-names = "core_irq", "bam_irq", "wlan_oob_irq";
-		qcom,wifi-control-func;
 
 		vdd-supply = <&pm8941_l21>;
 		vdd-io-supply = <&pm8941_l13>;
@@ -248,7 +245,7 @@
 		qcom,sup-voltages = <2950 2950>;
 		qcom,bus-width = <4>;
 		qcom,xpc;
-		qcom,nonremovable;
+		/*qcom,nonremovable;*/
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "SDR104";
 		qcom,current-limit = <800>;
 
@@ -285,7 +282,6 @@
 				1 &intc 0 220 0
 				2 &msmgpio 44 0x3>;
 		interrupt-names = "core_irq", "bam_irq", "wlan_oob_irq";
-		qcom,wifi-control-func;
 
 		vdd-supply = <&pm8941_l21>;
 		vdd-io-supply = <&pm8941_s3>;
@@ -305,7 +301,7 @@
 		qcom,sup-voltages = <2950 2950>;
 		qcom,bus-width = <4>;
 		qcom,xpc;
-		qcom,nonremovable;
+		/*qcom,nonremovable;*/
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "SDR104";
 		qcom,current-limit = <800>;
 
@@ -326,21 +322,6 @@
 		revision = "rev_d...";
 		status = "ok";
 	};
-
-        qcom,ion {
-                compatible = "qcom,msm-ion";
-                #address-cells = <1>;
-                #size-cells = <0>;
- 
-                qcom,ion-heap@23 { /* OTHER PIL HEAP */
-                        compatible = "qcom,msm-ion-reserve";
-                        reg = <23>;
-                        qcom,heap-align = <0x1000>;
-                        qcom,memory-fixed = <0x05d00000 0x1e00000>;
-                        qcom,ion-heap-type = "CARVEOUT";
-                };
-        };
-
 };
 
 &sdcc2 {

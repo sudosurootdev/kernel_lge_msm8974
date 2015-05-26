@@ -35,7 +35,8 @@ struct dsi_host_v2_private {
 	struct completion dma_comp;
 	int irq_enabled;
 	spinlock_t irq_lock;
-
+	spinlock_t mdp_lock;
+	int mdp_busy;
 	int irq_no;
 	unsigned char *dsi_base;
 	struct device dis_dev;
@@ -56,6 +57,7 @@ int msm_dsi_init(void)
 
 	init_completion(&dsi_host_private->dma_comp);
 	spin_lock_init(&dsi_host_private->irq_lock);
+	spin_lock_init(&dsi_host_private->mdp_lock);
 	return 0;
 }
 
@@ -138,10 +140,14 @@ void msm_dsi_enable_irq(void)
 	unsigned long flags;
 
 	spin_lock_irqsave(&dsi_host_private->irq_lock, flags);
-	dsi_host_private->irq_enabled++;
-	if (dsi_host_private->irq_enabled == 1)
-		enable_irq(dsi_host_private->irq_no);
+	if (dsi_host_private->irq_enabled) {
+		pr_debug("%s: IRQ aleady enabled\n", __func__);
+		spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
+		return;
+	}
 
+	enable_irq(dsi_host_private->irq_no);
+	dsi_host_private->irq_enabled = 1;
 	spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
 }
 
@@ -150,19 +156,26 @@ void msm_dsi_disable_irq(void)
 	unsigned long flags;
 
 	spin_lock_irqsave(&dsi_host_private->irq_lock, flags);
-	dsi_host_private->irq_enabled--;
-	if (dsi_host_private->irq_enabled == 0)
-		disable_irq(dsi_host_private->irq_no);
-
+	if (dsi_host_private->irq_enabled == 0) {
+		pr_debug("%s: IRQ already disabled\n", __func__);
+		spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
+		return;
+	}
+	disable_irq(dsi_host_private->irq_no);
+	dsi_host_private->irq_enabled = 0;
 	spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
 }
 
 void msm_dsi_disable_irq_nosync(void)
 {
 	spin_lock(&dsi_host_private->irq_lock);
-	dsi_host_private->irq_enabled--;
-	if (dsi_host_private->irq_enabled == 0)
-		disable_irq_nosync(dsi_host_private->irq_no);
+	if (dsi_host_private->irq_enabled == 0) {
+		pr_debug("%s: IRQ cannot be disabled\n", __func__);
+		spin_unlock(&dsi_host_private->irq_lock);
+		return;
+	}
+	disable_irq_nosync(dsi_host_private->irq_no);
+	dsi_host_private->irq_enabled = 0;
 	spin_unlock(&dsi_host_private->irq_lock);
 }
 
@@ -178,6 +191,13 @@ irqreturn_t msm_dsi_isr(int irq, void *ptr)
 
 	if (isr & DSI_INTR_CMD_DMA_DONE)
 		complete(&dsi_host_private->dma_comp);
+
+	if (isr & DSI_INTR_CMD_MDP_DONE) {
+		spin_lock(&dsi_host_private->mdp_lock);
+		dsi_host_private->mdp_busy = false;
+		msm_dsi_disable_irq_nosync();
+		spin_unlock(&dsi_host_private->mdp_lock);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -428,6 +448,16 @@ void msm_dsi_op_mode_config(int mode, struct mdss_panel_data *pdata)
 	wmb();
 }
 
+void msm_dsi_cmd_mdp_start(void)
+{
+	unsigned long flag;
+
+	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
+	msm_dsi_enable_irq();
+	dsi_host_private->mdp_busy = true;
+	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
+}
+
 int msm_dsi_cmd_reg_tx(u32 data)
 {
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
@@ -478,8 +508,6 @@ int msm_dsi_cmd_dma_tx(struct dsi_buf *tp)
 	if (rc == 0) {
 		pr_err("DSI command transaction time out\n");
 		rc = -ETIME;
-	} else if (!IS_ERR_VALUE(rc)) {
-		rc = 0;
 	}
 
 	dma_unmap_single(&dsi_host_private->dis_dev, tp->dmap, size,
@@ -522,7 +550,8 @@ int msm_dsi_cmds_tx(struct mdss_panel_data *pdata,
 {
 	struct dsi_cmd_desc *cm;
 	u32 dsi_ctrl, ctrl;
-	int i, video_mode, rc = 0;
+	int i, video_mode;
+	unsigned long flag;
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
 
 	/* turn on cmd mode
@@ -537,28 +566,30 @@ int msm_dsi_cmds_tx(struct mdss_panel_data *pdata,
 		MIPI_OUTP(ctrl_base + DSI_CTRL, ctrl);
 	}
 
+	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
 	msm_dsi_enable_irq();
+	dsi_host_private->mdp_busy = true;
+	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	cm = cmds;
+	dsi_buf_init(tp);
 	for (i = 0; i < cnt; i++) {
 		dsi_buf_init(tp);
 		dsi_cmd_dma_add(tp, cm);
 		msm_dsi_cmd_dma_tx(tp);
-		rc = msm_dsi_cmd_dma_tx(tp);
-		if (IS_ERR_VALUE(rc)) {
-			pr_err("%s: failed to call cmd_dma_tx\n", __func__);
-			break;
-		}
 		if (cm->wait)
 			msleep(cm->wait);
 		cm++;
 	}
 
+	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
+	dsi_host_private->mdp_busy = false;
 	msm_dsi_disable_irq();
+	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (video_mode)
 		MIPI_OUTP(ctrl_base + DSI_CTRL, dsi_ctrl);
-	return rc;
+	return 0;
 }
 
 /* MDSS_DSI_MRPS, Maximum Return Packet Size */
@@ -585,19 +616,9 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 			struct dsi_buf *tp, struct dsi_buf *rp,
 			struct dsi_cmd_desc *cmds, int rlen)
 {
-	int cnt, len, diff, pkt_size, rc = 0;
+	int cnt, len, diff, pkt_size;
+	unsigned long flag;
 	char cmd;
-	unsigned char *ctrl_base = dsi_host_private->dsi_base;
-	u32 dsi_ctrl, data;
-	int video_mode;
-
-	/* turn on cmd mode for video mode */
-	dsi_ctrl = MIPI_INP(ctrl_base + DSI_CTRL);
-	video_mode = dsi_ctrl & 0x02; /* VIDEO_MODE_EN */
-	if (video_mode) {
-		data = dsi_ctrl | 0x04; /* CMD_MODE_EN */
-		MIPI_OUTP(ctrl_base + DSI_CTRL, data);
-	}
 
 	if (pdata->panel_info.mipi.no_max_pkt_size)
 		rlen = ALIGN(rlen, 4); /* Only support rlen = 4*n */
@@ -624,7 +645,10 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 		cnt = len + 6; /* 4 bytes header + 2 bytes crc */
 	}
 
+	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
 	msm_dsi_enable_irq();
+	dsi_host_private->mdp_busy = true;
+	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (!pdata->panel_info.mipi.no_max_pkt_size) {
 		/* packet size need to be set at every read */
@@ -632,13 +656,7 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 		max_pktsize[0] = pkt_size;
 		dsi_buf_init(tp);
 		dsi_cmd_dma_add(tp, pkt_size_cmd);
-		rc = msm_dsi_cmd_dma_tx(tp);
-		if (IS_ERR_VALUE(rc)) {
-			msm_dsi_disable_irq();
-			pr_err("%s: dma_tx failed\n", __func__);
-			rp->len = 0;
-			goto end;
-		}
+		msm_dsi_cmd_dma_tx(tp);
 		pr_debug("%s: Max packet size sent\n", __func__);
 	}
 
@@ -647,12 +665,6 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 
 	/* transmit read comamnd to client */
 	msm_dsi_cmd_dma_tx(tp);
-	if (IS_ERR_VALUE(rc)) {
-		msm_dsi_disable_irq();
-		pr_err("%s: dma_tx failed\n", __func__);
-		rp->len = 0;
-		goto end;
-	}
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
@@ -669,7 +681,10 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 
 	msm_dsi_cmd_dma_rx(rp, cnt);
 
+	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
+	dsi_host_private->mdp_busy = false;
 	msm_dsi_disable_irq();
+	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (pdata->panel_info.mipi.no_max_pkt_size) {
 		/*
@@ -706,10 +721,6 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 		break;
 	}
 
-	if (video_mode)
-		MIPI_OUTP(ctrl_base + DSI_CTRL,
-					dsi_ctrl); /* restore */
-end:
 	return rp->len;
 }
 
@@ -879,7 +890,7 @@ static int msm_dsi_off(struct mdss_panel_data *pdata)
 	msm_dsi_clk_set_rate(DSI_ESC_CLK_RATE, 0, 0, 0);
 	msm_dsi_clk_disable();
 	msm_dsi_unprepare_clocks();
-	msm_dsi_phy_off(dsi_host_private->dsi_base);
+
 	msm_dsi_ahb_ctrl(0);
 
 	ret = msm_dsi_regulator_disable();

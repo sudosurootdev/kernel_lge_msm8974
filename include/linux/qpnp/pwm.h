@@ -124,6 +124,7 @@ struct pwm_duty_cycles {
 	int *duty_pcts30;
 	int *duty_pcts31;
 	int *duty_pcts32;
+	int *duty_pcts45;
 	int *duty_pcts101;
 	int *duty_pcts102;
 #endif

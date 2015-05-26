@@ -67,17 +67,9 @@ int msm_isp_validate_axi_request(struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
 {
 	int rc = -1, i;
-	struct msm_vfe_axi_stream *stream_info = NULL;
-	uint32_t idx = 0;
-
-	if (NULL == stream_cfg_cmd || NULL == axi_data)
-		return rc;
-
-	idx = HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle);
-	if (idx < MAX_NUM_STREAM)
-		stream_info = &axi_data->stream_info[idx];
-	else
-		return rc;
+	struct msm_vfe_axi_stream *stream_info =
+		&axi_data->stream_info[
+			HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle)];
 
 	switch (stream_cfg_cmd->output_format) {
 	case V4L2_PIX_FMT_SBGGR8:
@@ -368,9 +360,11 @@ void msm_isp_sof_notify(struct vfe_device *vfe_dev,
 		if (vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id == 0)
 			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id = 1;
 
+/* LGE_CHANGE_S, real frame counter, 2013-7-10, jonghwan.ko@lge.com */
 		if(vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id < 10)
 		pr_err("%s: PIX0 frame id: %lu\n", __func__,
 			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
+/* LGE_CHANGE_E, real frame counter, 2013-7-10, jonghwan.ko@lge.com */
 		break;
 	case VFE_RAW_0:
 	case VFE_RAW_1:
@@ -397,22 +391,11 @@ void msm_isp_calculate_framedrop(
 	struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
 {
-	struct msm_vfe_axi_stream *stream_info = NULL;
-	uint32_t framedrop_period = 0;
-	uint8_t idx = 0;
-
-	if (NULL == axi_data || NULL == stream_cfg_cmd)
-		return;
-
-	idx = HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle);
-
-	if (idx < MAX_NUM_STREAM)
-		stream_info = &axi_data->stream_info[idx];
-	else
-		return;
-
-	framedrop_period = msm_isp_get_framedrop_period(
-			stream_cfg_cmd->frame_skip_pattern);
+	struct msm_vfe_axi_stream *stream_info =
+		&axi_data->stream_info[
+		HANDLE_TO_IDX(stream_cfg_cmd->axi_stream_handle)];
+	uint32_t framedrop_period = msm_isp_get_framedrop_period(
+	   stream_cfg_cmd->frame_skip_pattern);
 
 	if (stream_cfg_cmd->frame_skip_pattern == SKIP_ALL)
 		stream_info->framedrop_pattern = 0x0;
@@ -657,9 +640,8 @@ static int msm_isp_cfg_ping_pong_address(struct vfe_device *vfe_dev,
 	rc = vfe_dev->buf_mgr->ops->get_buf(vfe_dev->buf_mgr,
 			vfe_dev->pdev->id, bufq_handle, &buf);
 	if (rc < 0) {
-		if(stream_idx < MAX_NUM_STREAM)
-			vfe_dev->error_info.
-				stream_framedrop_count[stream_idx]++;
+		vfe_dev->error_info.
+			stream_framedrop_count[stream_idx]++;
 		return rc;
 	}
 

@@ -12,9 +12,6 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
-#include <asm/relaxed.h>
-
-#include "smpboot.h"
 
 #ifdef CONFIG_USE_GENERIC_SMP_HELPERS
 static struct {
@@ -102,14 +99,14 @@ void __init call_function_init(void)
  */
 static void csd_lock_wait(struct call_single_data *data)
 {
-	while (cpu_relaxed_read_short(&data->flags) & CSD_FLAG_LOCK)
-		cpu_read_relax();
+	while (data->flags & CSD_FLAG_LOCK)
+		cpu_relax();
 }
 
 static void csd_lock(struct call_single_data *data)
 {
 	csd_lock_wait(data);
-	data->flags |= CSD_FLAG_LOCK;
+	data->flags = CSD_FLAG_LOCK;
 
 	/*
 	 * prevent CPU from reordering the above assignment
@@ -313,20 +310,20 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	 */
 	this_cpu = get_cpu();
 
+	/*
+	 * Can deadlock when called with interrupts disabled.
+	 * We allow cpu's that are not yet online though, as no one else can
+	 * send smp call function interrupt to this cpu and as such deadlocks
+	 * can't happen.
+	 */
+	WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled()
+		     && !oops_in_progress);
+
 	if (cpu == this_cpu) {
 		local_irq_save(flags);
 		func(info);
 		local_irq_restore(flags);
 	} else {
-		/*
-		 * Can deadlock when called with interrupts disabled.
-		 * We allow cpu's that are not yet online though, as no one else
-		 * can send smp call function interrupt to this cpu and as such
-		 * deadlocks can't happen.
-		 */
-		WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled()
-			     && !oops_in_progress);
-
 		if ((unsigned)cpu < nr_cpu_ids && cpu_online(cpu)) {
 			struct call_single_data *data = &d;
 
@@ -411,21 +408,20 @@ void __smp_call_function_single(int cpu, struct call_single_data *data,
 	unsigned long flags;
 
 	this_cpu = get_cpu();
+	/*
+	 * Can deadlock when called with interrupts disabled.
+	 * We allow cpu's that are not yet online though, as no one else can
+	 * send smp call function interrupt to this cpu and as such deadlocks
+	 * can't happen.
+	 */
+	WARN_ON_ONCE(cpu_online(smp_processor_id()) && wait && irqs_disabled()
+		     && !oops_in_progress);
 
 	if (cpu == this_cpu) {
 		local_irq_save(flags);
 		data->func(data->info);
 		local_irq_restore(flags);
 	} else {
-		/*
-		 * Can deadlock when called with interrupts disabled.
-		 * We allow cpu's that are not yet online though, as no one else
-		 * can send smp call function interrupt to this cpu and as such
-		 * deadlocks can't happen.
-		 */
-		WARN_ON_ONCE(cpu_online(smp_processor_id()) && wait
-			     && irqs_disabled() && !oops_in_progress);
-
 		csd_lock(data);
 		generic_exec_single(cpu, data, wait);
 	}
@@ -673,8 +669,6 @@ void __init smp_init(void)
 {
 	unsigned int cpu;
 
-	idle_threads_init();
-
 	/* FIXME: This should be done in userspace --RR */
 	for_each_present_cpu(cpu) {
 		if (num_online_cpus() >= setup_max_cpus)
@@ -797,26 +791,3 @@ void on_each_cpu_cond(bool (*cond_func)(int cpu, void *info),
 	}
 }
 EXPORT_SYMBOL(on_each_cpu_cond);
-
-static void do_nothing(void *unused)
-{
-}
-
-/**
- * kick_all_cpus_sync - Force all cpus out of idle
- *
- * Used to synchronize the update of pm_idle function pointer. It's
- * called after the pointer is updated and returns after the dummy
- * callback function has been executed on all cpus. The execution of
- * the function can only happen on the remote cpus after they have
- * left the idle function which had been called via pm_idle function
- * pointer. So it's guaranteed that nothing uses the previous pointer
- * anymore.
- */
-void kick_all_cpus_sync(void)
-{
-	/* Make sure the change is visible before we kick the cpus */
-	smp_mb();
-	smp_call_function(do_nothing, NULL, 1);
-}
-EXPORT_SYMBOL_GPL(kick_all_cpus_sync);

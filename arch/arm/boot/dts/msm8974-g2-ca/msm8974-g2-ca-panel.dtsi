@@ -27,6 +27,11 @@
 
 	qcom,mdss_dsi_jdi_cmd {
 		status = "disable";
+		lge,mdss-dsi-bit-rate = <919000000>;
+		qcom,mdss-pan-dsi-t-clk = <0x1E 0x37>;
+		qcom,panel-phy-timingSettings = [
+			D5 48 3C 00 61 59
+			3B 4A 5F 03 04 00];
 	};
 
 	qcom,mdss_dsi_jdi_video {

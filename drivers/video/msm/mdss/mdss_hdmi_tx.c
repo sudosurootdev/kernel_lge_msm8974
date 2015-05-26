@@ -20,6 +20,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 #include <linux/types.h>
+#include <linux/sched.h>
 #include <mach/msm_hdmi_audio_codec.h>
 
 #define REG_DUMP 0
@@ -123,6 +124,8 @@ struct dss_gpio core_gpio_config[] = {
 struct dss_gpio cec_gpio_config[] = {
 	{0, 1, COMPATIBLE_NAME "-cec"}
 };
+
+struct completion power_off_done;
 
 const char *hdmi_pm_name(enum hdmi_tx_power_module_type module)
 {
@@ -330,7 +333,7 @@ void *hdmi_get_featuredata_from_sysfs_dev(struct device *device,
 {
 	struct hdmi_tx_ctrl *hdmi_ctrl = NULL;
 
-	if (!device || feature_type >= HDMI_TX_FEAT_MAX) {
+	if (!device || feature_type > HDMI_TX_FEAT_MAX) {
 		DEV_ERR("%s: invalid input\n", __func__);
 		return NULL;
 	}
@@ -952,12 +955,6 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 		if (hdmi_tx_enable_power(hdmi_ctrl, HDMI_TX_DDC_PM, true)) {
 			DEV_ERR("%s: Failed to enable ddc power\n", __func__);
 			return;
-		}
-
-		/* wait if iommu isn't attached */
-		if (!is_mdss_iommu_attached()) {
-			DEV_INFO("%s: mdp iommu is not attached yet.\n", __func__);
-			wait_for_completion_interruptible(&mdss_res->iommu_attach_done);
 		}
 
 		hdmi_tx_read_sink_info(hdmi_ctrl);
@@ -2378,6 +2375,7 @@ static void hdmi_tx_power_off_work(struct work_struct *work)
 	mutex_unlock(&hdmi_ctrl->mutex);
 
 	DEV_INFO("%s: HDMI Core: OFF\n", __func__);
+	complete_all(&power_off_done);
 } /* hdmi_tx_power_off_work */
 
 static int hdmi_tx_power_off(struct mdss_panel_data *panel_data)
@@ -2429,7 +2427,7 @@ static int hdmi_tx_power_on(struct mdss_panel_data *panel_data)
 	flush_work_sync(&hdmi_ctrl->power_off_work);
 
 	if (hdmi_ctrl->pdata.primary) {
-		timeout = wait_for_completion_timeout(
+		timeout = wait_for_completion_interruptible_timeout(
 			&hdmi_ctrl->hpd_done, HZ);
 		if (!timeout) {
 			DEV_ERR("%s: cable connection hasn't happened yet\n",
@@ -2616,8 +2614,18 @@ static int hdmi_tx_sysfs_enable_hpd(struct hdmi_tx_ctrl *hdmi_ctrl, int on)
 #ifdef CONFIG_SLIMPORT_DYNAMIC_HPD
 		if (hdmi_ctrl->panel_power_on){
 			DEV_DBG("%s: flush power off work\n",__func__);
-			flush_work(&hdmi_ctrl->power_off_work);
+			flush_work_sync(&hdmi_ctrl->power_off_work);
 		}
+
+              DEV_DBG("%s: hpd off pending %d\n", __func__, hdmi_ctrl->hpd_off_pending);
+			if (hdmi_ctrl->hpd_off_pending) {
+				int timeout;
+				INIT_COMPLETION(power_off_done);
+				timeout = wait_for_completion_interruptible_timeout(&power_off_done, 5 * HZ);
+				if (!timeout) {
+					DEV_ERR("%s: tx_power_off hasn't happened yet\n", __func__);
+				}
+			}
 #endif
 		rc = hdmi_tx_hpd_on(hdmi_ctrl);
 	} else {
@@ -2846,6 +2854,7 @@ static int hdmi_tx_dev_init(struct hdmi_tx_ctrl *hdmi_ctrl)
 	hdmi_ctrl->sp_test_mode = false;
 #endif
 	init_completion(&hdmi_ctrl->hpd_done);
+	init_completion(&power_off_done);
 	INIT_WORK(&hdmi_ctrl->hpd_int_work, hdmi_tx_hpd_int_work);
 
 	INIT_WORK(&hdmi_ctrl->power_off_work, hdmi_tx_power_off_work);
@@ -2969,7 +2978,7 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 			u32 timeout;
 			hdmi_ctrl->panel_suspend = false;
 
-			timeout = wait_for_completion_timeout(
+			timeout = wait_for_completion_interruptible_timeout(
 				&hdmi_ctrl->hpd_done, HZ/10);
 			if (!timeout & !hdmi_ctrl->hpd_state) {
 				DEV_INFO("%s: cable removed during suspend\n",
@@ -3419,13 +3428,13 @@ static int hdmi_tx_get_dt_vreg_data(struct device *dev,
 				__func__, hdmi_tx_pm_name(module_type), rc);
 			goto error;
 		}
-		mp->vreg_config[j].enable_load = val_array[i];
+		mp->vreg_config[j].peak_current = val_array[i];
 
 		DEV_DBG("%s: %s min=%d, max=%d, pc=%d\n", __func__,
 			mp->vreg_config[j].vreg_name,
 			mp->vreg_config[j].min_voltage,
 			mp->vreg_config[j].max_voltage,
-			mp->vreg_config[j].enable_load);
+			mp->vreg_config[j].peak_current);
 
 		ndx_mask >>= 1;
 		j++;

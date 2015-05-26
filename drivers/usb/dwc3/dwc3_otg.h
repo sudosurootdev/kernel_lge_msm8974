@@ -26,7 +26,7 @@
 #include "power.h"
 #endif
 
-#define DWC3_IDEV_CHG_MAX 1600
+#define DWC3_IDEV_CHG_MAX 1500
 
 struct dwc3_charger;
 
@@ -45,8 +45,9 @@ struct dwc3_otg {
 	struct dwc3		*dwc;
 	void __iomem		*regs;
 	struct regulator	*vbus_otg;
-	struct work_struct	sm_work;
+	struct delayed_work	sm_work;
 	struct work_struct      touch_work;
+	struct workqueue_struct *sm_wq;
 	struct dwc3_charger	*charger;
 	struct dwc3_ext_xceiv	*ext_xceiv;
 #define ID		0
@@ -55,6 +56,7 @@ struct dwc3_otg {
 	struct power_supply	*psy;
 	struct completion	dwc3_xcvr_vbus_init;
 	int			host_bus_suspend;
+	int			vbus_retry_count;
 };
 
 /**
@@ -97,7 +99,6 @@ struct dwc3_charger {
 
 /* for external charger driver */
 extern int dwc3_set_charger(struct usb_otg *otg, struct dwc3_charger *charger);
-extern int smb349_thermal_mitigation_update(int value);
 
 enum dwc3_ext_events {
 	DWC3_EVENT_NONE = 0,		/* no change event */

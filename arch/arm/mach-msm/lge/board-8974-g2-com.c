@@ -40,14 +40,13 @@
 #include <mach/rpm-smd.h>
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
-#include <mach/msm_smem.h>
 #include <mach/msm_bus_board.h>
 #include "../board-dt.h"
 #include "../clock.h"
 #include "../devices.h"
 #include "../spm.h"
 #include "../modem_notifier.h"
-#include "../pm.h"
+#include "../lpm_resources.h"
 #include "../platsmp.h"
 #include <mach/board_lge.h>
 
@@ -102,26 +101,6 @@ static void __init msm8974_early_memory(void)
 	of_scan_flat_dt(dt_scan_for_memory_hole, msm8974_reserve_table);
 }
 
-#ifdef CONFIG_BRICKED_THERMAL
-static struct msm_thermal_data msm_thermal_pdata = {
-	.sensor_id = 0,
-	.poll_ms = 400,
-	.shutdown_temp = 85,
-
-	.allowed_max_high = 84,
-	.allowed_max_low = 79,
-	.allowed_max_freq = 300000,
-
-	.allowed_mid_high = 78,
-	.allowed_mid_low = 72,
-	.allowed_mid_freq = 960000,
-
-	.allowed_low_high = 71,
-	.allowed_low_low = 65,
-	.allowed_low_freq = 1497600,
-};
-#endif
-
 #ifdef CONFIG_LGE_LCD_TUNING
 static struct platform_device lcd_misc_device = {
 	.name = "lcd_misc_msm",
@@ -170,9 +149,9 @@ int kcal_set_values(int kcal_r, int kcal_g, int kcal_b)
 #if defined(CONFIG_MACH_MSM8974_A1)
 		int isUpdate = 0;
 
-		int kcal_r_limit = 0;
-		int kcal_g_limit = 0;
-		int kcal_b_limit = 0;
+		int kcal_r_limit = 250;
+		int kcal_g_limit = 250;
+		int kcal_b_limit = 253;
 
 		g_kcal_r = kcal_r < kcal_r_limit ? kcal_r_limit : kcal_r;
 		g_kcal_g = kcal_g < kcal_g_limit ? kcal_g_limit : kcal_g;
@@ -237,11 +216,10 @@ extern void init_bcm_wifi(void);
 
 void __init msm8974_add_drivers(void)
 {
-	msm_smem_init();
 	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();
-	msm_pm_sleep_status_init();
+	msm_lpmrs_module_init();
 	rpm_regulator_smd_driver_init();
 	msm_spm_device_init();
 	krait_power_init();
@@ -250,11 +228,7 @@ void __init msm8974_add_drivers(void)
 	else
 		msm_clock_init(&msm8974_clock_init_data);
 	tsens_tm_init_driver();
-#ifdef CONFIG_BRICKED_THERMAL
-	msm_thermal_init(&msm_thermal_pdata);
-#else
 	msm_thermal_device_init();
-#endif
 #ifdef CONFIG_LGE_LCD_TUNING
 	lge_add_lcd_misc_devices();
 #endif

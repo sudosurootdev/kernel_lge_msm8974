@@ -87,13 +87,13 @@ static int snfc_uart_control_open(struct inode *inode, struct file *fp)
                 SNFC_DEBUG_MSG("[snfc_intu_poll] gpio_request snfc_hvdd fail\n");
             }
             snfc_gpio_write(snfc_gpios.gpio_hvdd, GPIO_HIGH_VALUE);
-
+/*
             rc = gpio_request(snfc_gpios.gpio_uicc_con, "snfc_uicc_con");
             {
                 SNFC_DEBUG_MSG("[snfc_driver] gpio_request snfc_uicc_con fail\n");
             }
             snfc_gpio_write(snfc_gpios.gpio_uicc_con, GPIO_LOW_VALUE);
-
+*/
             gpio_init = 1;                
         }
 
@@ -136,6 +136,7 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 	_e_snfc_uart_status current_status;
 	int autopoll_wait_cnt;
 	int break_cnt;
+    int uiccConVal;
 	unsigned char write_buf = 0x00/*, read_buf = 0x00*/;
 	int rc =0;
 	
@@ -273,6 +274,22 @@ static long snfc_uart_control_ioctl(struct file *flip, unsigned int cmd, unsigne
 			rc = snfc_i2c_write(0x02, &write_buf, 1);
 			//mutex_unlock(&nfc_cen_mutex);  			
 			break;
+            
+        case IOCTL_SNFC_HVDD_DOWN_SET:
+            SNFC_DEBUG_MSG("snfc_uart_control] HVDD Down Set wait\n");
+
+            break_cnt = 0;
+            uiccConVal = GPIO_HIGH_VALUE;
+
+            while(break_cnt < 10 && uiccConVal == GPIO_HIGH_VALUE)
+            {
+                uiccConVal = snfc_gpio_read(snfc_gpios.gpio_uicc_con);
+                usleep(100*1000);
+                break_cnt++;
+            }
+ 
+            SNFC_DEBUG_MSG("snfc_uart_control] HVDD Down Set done, break_cnt = %d, uiccConVal = %d\n",break_cnt,uiccConVal);
+            break;
 			
 		case IOCTL_SNFC_END :
 			SNFC_DEBUG_MSG_LOW("[snfc_uart_control] IOCTL_SNFC_END - start\n");
@@ -402,6 +419,12 @@ int snfc_uart_control_probe(struct device_node *np)
 
     SNFC_DEBUG_MSG_LOW("[snfc_driver] GPIO_SNFC_PON = %d, GPIO_SNFC_HSEL = %d\n",
         snfc_gpio_read(snfc_gpios.gpio_pon),snfc_gpio_read(snfc_gpios.gpio_hsel) ); 
+
+    rc = gpio_request(snfc_gpios.gpio_uicc_con, "snfc_uicc_con");
+    if(rc){
+        SNFC_DEBUG_MSG("[snfc_driver] gpio_request snfc_uicc_con fail\n");
+    } 
+    snfc_gpio_open(snfc_gpios.gpio_uicc_con,GPIO_DIRECTION_OUT,GPIO_LOW_VALUE);
 
     /* register the device file */
     rc = misc_register(&snfc_uart_control_device);

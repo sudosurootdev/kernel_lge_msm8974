@@ -654,8 +654,10 @@ static void ispif_process_irq(struct ispif_device *ispif,
 	if (out[vfe_id].ispifIrqStatus0 &
 			ISPIF_IRQ_STATUS_PIX_SOF_MASK) {
 		ispif->sof_count[vfe_id].sof_cnt[PIX0]++;
+/* LGE_CHANGE_S, real frame counter, 2013-7-10, jonghwan.ko@lge.com */
 		if(ispif->sof_count[vfe_id].sof_cnt[PIX0] <10)
 			pr_err(" %s : %d ",__func__,ispif->sof_count[vfe_id].sof_cnt[PIX0]);
+/* LGE_CHANGE_E, real frame counter, 2013-7-10, jonghwan.ko@lge.com */
 	}
 	if (out[vfe_id].ispifIrqStatus0 &
 			ISPIF_IRQ_STATUS_RDI0_SOF_MASK) {
@@ -747,7 +749,7 @@ static inline void msm_ispif_read_irq_status(struct ispif_irq_status *out,
 
 static irqreturn_t msm_io_ispif_irq(int irq_num, void *data)
 {
-	struct ispif_irq_status irq[VFE_MAX] = {{0}};
+	struct ispif_irq_status irq[VFE_MAX];
 
 	msm_ispif_read_irq_status(irq, data);
 	return IRQ_HANDLED;

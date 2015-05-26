@@ -38,6 +38,10 @@
 #include <mach/board_lge.h>
 #endif
 
+#ifndef CUST_G2_TOUCH
+#define CUST_G2_TOUCH
+#endif
+
 /* QPNP VADC register definition */
 #define QPNP_VADC_REVISION1				0x0
 #define QPNP_VADC_REVISION2				0x1
@@ -1183,6 +1187,12 @@ fail:
 }
 EXPORT_SYMBOL(qpnp_vadc_iadc_sync_complete_request);
 
+#ifdef CUST_G2_TOUCH
+extern  void check_touch_xo_therm(int type);
+int touch_thermal_mode = 0;
+int thermal_threshold = 3;
+#endif
+
 #ifdef CONFIG_MACH_LGE
 void xo_therm_logging(void)
 {
@@ -1194,7 +1204,19 @@ void xo_therm_logging(void)
 	if (rc)
 		pr_err("VADC read error with %d\n", rc);
 
-	//printk(KERN_INFO "[XO_THERM] Result:%lld Raw:%d\n", tmp.physical, tmp.adc_code);
+#ifdef CUST_G2_TOUCH
+#if !defined(CONFIG_MACH_MSM8974_G2_KDDI)
+	if(touch_thermal_mode == 0 && tmp.physical >= 50) {
+		touch_thermal_mode = 1;
+		check_touch_xo_therm(1);
+	} else if(touch_thermal_mode == 1 && tmp.physical < (50-thermal_threshold)){
+		touch_thermal_mode = 0;
+		check_touch_xo_therm(0);
+	}
+#endif
+#endif
+
+	printk(KERN_INFO "[XO_THERM] Result:%lld Raw:%d\n", tmp.physical, tmp.adc_code);
 }
 #endif
 

@@ -54,14 +54,14 @@ static int voice_send_netid_timing_cmd(struct voice_data *v);
 static int voice_send_attach_vocproc_cmd(struct voice_data *v);
 static int voice_send_set_device_cmd(struct voice_data *v);
 static int voice_send_disable_vocproc_cmd(struct voice_data *v);
-static int voice_send_vol_step_cmd(struct voice_data *v);
+static int voice_send_vol_index_cmd(struct voice_data *v);
 static int voice_send_mvm_unmap_memory_physical_cmd(struct voice_data *v,
 						    uint32_t mem_handle);
 static int voice_send_mvm_cal_network_cmd(struct voice_data *v);
 static int voice_send_mvm_media_type_cmd(struct voice_data *v);
 static int voice_send_cvs_data_exchange_mode_cmd(struct voice_data *v);
 static int voice_send_cvs_packet_exchange_config_cmd(struct voice_data *v);
-static int voice_set_packet_exchange_mode_and_config(uint32_t session_id,
+static int voice_set_packet_exchange_mode_and_config(uint16_t session_id,
 						     uint32_t mode);
 
 static int voice_send_cvs_register_cal_cmd(struct voice_data *v);
@@ -84,43 +84,6 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv);
 
 static int voice_send_set_pp_enable_cmd(struct voice_data *v,
 					uint32_t module_id, int enable);
-
-static struct voice_data *voice_get_session_by_idx(int idx);
-static int voice_get_idx_for_session(u32 session_id);
-
-static void voice_itr_init(struct voice_session_itr *itr,
-			   u32 session_id)
-{
-	if (itr == NULL)
-		return;
-	itr->session_idx = voice_get_idx_for_session(session_id);
-	if (session_id == ALL_SESSION_VSID)
-		itr->cur_idx = 0;
-	else
-		itr->cur_idx = itr->session_idx;
-
-}
-
-static bool voice_itr_get_next_session(struct voice_session_itr *itr,
-					struct voice_data **voice)
-{
-	bool ret = false;
-
-	if (itr == NULL)
-		return false;
-	pr_debug("%s : cur idx = %d session idx = %d",
-			 __func__, itr->cur_idx, itr->session_idx);
-
-	if (itr->cur_idx <= itr->session_idx) {
-		ret = true;
-		*voice = voice_get_session_by_idx(itr->cur_idx);
-		itr->cur_idx++;
-	} else {
-		*voice = NULL;
-	}
-
-	return ret;
-}
 
 static u16 voice_get_mvm_handle(struct voice_data *v)
 {
@@ -191,7 +154,7 @@ static void voice_set_cvp_handle(struct voice_data *v, u16 cvp_handle)
 	v->cvp_handle = cvp_handle;
 }
 
-char *voc_get_session_name(u32 session_id)
+char *voc_get_session_name(u16 session_id)
 {
 	char *session_name = NULL;
 
@@ -206,9 +169,9 @@ char *voc_get_session_name(u32 session_id)
 	return session_name;
 }
 
-uint32_t voc_get_session_id(char *name)
+uint16_t voc_get_session_id(char *name)
 {
-	u32 session_id = 0;
+	u16 session_id = 0;
 
 	if (name != NULL) {
 		if (!strncmp(name, "Voice session", 13))
@@ -229,103 +192,42 @@ uint32_t voc_get_session_id(char *name)
 	return session_id;
 }
 
-static struct voice_data *voice_get_session(u32 session_id)
+static struct voice_data *voice_get_session(u16 session_id)
 {
 	struct voice_data *v = NULL;
 
-	switch (session_id) {
-	case VOICE_SESSION_VSID:
-		v = &common.voice[VOC_PATH_PASSIVE];
-		break;
-
-	case VOICE2_SESSION_VSID:
-		v = &common.voice[VOC_PATH_VOICE2_PASSIVE];
-		break;
-
-	case VOLTE_SESSION_VSID:
-		v = &common.voice[VOC_PATH_VOLTE_PASSIVE];
-		break;
-
-	case VOIP_SESSION_VSID:
-		v = &common.voice[VOC_PATH_FULL];
-		break;
-
-	case ALL_SESSION_VSID:
-		break;
-
-	default:
-		pr_err("%s: Invalid session_id : %x\n", __func__, session_id);
-
-		break;
+	if ((session_id >= SESSION_ID_BASE) &&
+	    (session_id < SESSION_ID_BASE + MAX_VOC_SESSIONS)) {
+		v = &common.voice[session_id - SESSION_ID_BASE];
 	}
 
-	pr_debug("%s:session_id 0x%x session handle 0x%x\n",
-		__func__, session_id, (unsigned int)v);
+	pr_debug("%s: session_id 0x%x session handle 0x%x\n",
+			 __func__, session_id, (unsigned int)v);
 
 	return v;
 }
 
-static int voice_get_idx_for_session(u32 session_id)
-{
-	int idx = 0;
-
-	switch (session_id) {
-	case VOICE_SESSION_VSID:
-		idx = VOC_PATH_PASSIVE;
-		break;
-
-	case VOICE2_SESSION_VSID:
-		idx = VOC_PATH_VOICE2_PASSIVE;
-		break;
-
-	case VOLTE_SESSION_VSID:
-		idx = VOC_PATH_VOLTE_PASSIVE;
-		break;
-
-	case VOIP_SESSION_VSID:
-		idx = VOC_PATH_FULL;
-		break;
-
-	case ALL_SESSION_VSID:
-		idx = MAX_VOC_SESSIONS - 1;
-		break;
-
-	default:
-		pr_err("%s: Invalid session_id : %x\n", __func__, session_id);
-
-		break;
-	}
-
-	return idx;
-}
-
-static struct voice_data *voice_get_session_by_idx(int idx)
-{
-	return ((idx < 0 || idx >= MAX_VOC_SESSIONS) ?
-				NULL : &common.voice[idx]);
-}
-
-static bool is_voice_session(u32 session_id)
+static bool is_voice_session(u16 session_id)
 {
 	return (session_id == common.voice[VOC_PATH_PASSIVE].session_id);
 }
 
-static bool is_voip_session(u32 session_id)
+static bool is_voip_session(u16 session_id)
 {
 	return (session_id == common.voice[VOC_PATH_FULL].session_id);
 }
 
-static bool is_volte_session(u32 session_id)
+static bool is_volte_session(u16 session_id)
 {
 	return (session_id == common.voice[VOC_PATH_VOLTE_PASSIVE].session_id);
 }
 
-static bool is_voice2_session(u32 session_id)
+static bool is_voice2_session(u16 session_id)
 {
 	return (session_id == common.voice[VOC_PATH_VOICE2_PASSIVE].session_id);
 }
 
-static bool is_other_session_active(u32 session_id)
+static bool is_other_session_active(u16 session_id)
 {
 	int i;
 	bool ret = false;
@@ -345,20 +247,7 @@ static bool is_other_session_active(u32 session_id)
 	pr_debug("%s: ret %d\n", __func__, ret);
 
 	return ret;
-}
 
-static bool is_voice_app_id(u32 session_id)
-{
-	return (((session_id & APP_ID_MASK) >> APP_ID_SHIFT) ==
-						VSID_APP_CS_VOICE);
-}
-
-static void init_session_id(void)
-{
-	common.voice[VOC_PATH_PASSIVE].session_id = VOICE_SESSION_VSID;
-	common.voice[VOC_PATH_VOLTE_PASSIVE].session_id = VOLTE_SESSION_VSID;
-	common.voice[VOC_PATH_VOICE2_PASSIVE].session_id = VOICE2_SESSION_VSID;
-	common.voice[VOC_PATH_FULL].session_id = VOIP_SESSION_VSID;
 }
 
 static int voice_apr_register(void)
@@ -498,8 +387,7 @@ static int voice_send_dual_control_cmd(struct voice_data *v)
 						APR_HDR_SIZE);
 		pr_debug("%s: send mvm Voice Ctl pkt size = %d\n",
 			__func__, mvm_voice_ctl_cmd.hdr.pkt_size);
-		mvm_voice_ctl_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		mvm_voice_ctl_cmd.hdr.src_port = v->session_id;
 		mvm_voice_ctl_cmd.hdr.dest_port = mvm_handle;
 		mvm_voice_ctl_cmd.hdr.token = 0;
 		mvm_voice_ctl_cmd.hdr.opcode =
@@ -573,8 +461,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 						APR_HDR_SIZE);
 			pr_debug("%s: send mvm create session pkt size = %d\n",
 				 __func__, mvm_session_cmd.hdr.pkt_size);
-			mvm_session_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+			mvm_session_cmd.hdr.src_port = v->session_id;
 			mvm_session_cmd.hdr.dest_port = 0;
 			mvm_session_cmd.hdr.token = 0;
 			mvm_session_cmd.hdr.opcode =
@@ -585,7 +472,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 				sizeof(mvm_session_cmd.mvm_session.name));
 			} else if (is_voice2_session(v->session_id)) {
 				strlcpy(mvm_session_cmd.mvm_session.name,
-				VOICE2_SESSION_VSID_STR,
+				VOICE2_SESSION_VSID,
 				sizeof(mvm_session_cmd.mvm_session.name));
 			} else {
 				strlcpy(mvm_session_cmd.mvm_session.name,
@@ -618,8 +505,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 					APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(mvm_session_cmd) -
 					APR_HDR_SIZE);
-			mvm_session_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+			mvm_session_cmd.hdr.src_port = v->session_id;
 			mvm_session_cmd.hdr.dest_port = 0;
 			mvm_session_cmd.hdr.token = 0;
 			mvm_session_cmd.hdr.opcode =
@@ -663,8 +549,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 						APR_PKT_SIZE(APR_HDR_SIZE,
 						sizeof(cvs_session_cmd) -
 						APR_HDR_SIZE);
-			cvs_session_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+			cvs_session_cmd.hdr.src_port = v->session_id;
 			cvs_session_cmd.hdr.dest_port = 0;
 			cvs_session_cmd.hdr.token = 0;
 			cvs_session_cmd.hdr.opcode =
@@ -675,7 +560,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 				sizeof(cvs_session_cmd.cvs_session.name));
 			} else if (is_voice2_session(v->session_id)) {
 				strlcpy(cvs_session_cmd.cvs_session.name,
-				VOICE2_SESSION_VSID_STR,
+				VOICE2_SESSION_VSID,
 				sizeof(cvs_session_cmd.cvs_session.name));
 			} else {
 			strlcpy(cvs_session_cmd.cvs_session.name,
@@ -713,8 +598,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 					sizeof(cvs_full_ctl_cmd) -
 					APR_HDR_SIZE);
 
-			cvs_full_ctl_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+			cvs_full_ctl_cmd.hdr.src_port = v->session_id;
 			cvs_full_ctl_cmd.hdr.dest_port = 0;
 			cvs_full_ctl_cmd.hdr.token = 0;
 			cvs_full_ctl_cmd.hdr.opcode =
@@ -761,8 +645,7 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 					APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(attach_stream_cmd) -
 					APR_HDR_SIZE);
-			attach_stream_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+			attach_stream_cmd.hdr.src_port = v->session_id;
 			attach_stream_cmd.hdr.dest_port = mvm_handle;
 			attach_stream_cmd.hdr.token = 0;
 			attach_stream_cmd.hdr.opcode =
@@ -827,8 +710,7 @@ static int voice_destroy_mvm_cvs_session(struct voice_data *v)
 					APR_PKT_VER);
 		detach_stream.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(detach_stream) - APR_HDR_SIZE);
-		detach_stream.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		detach_stream.hdr.src_port = v->session_id;
 		detach_stream.hdr.dest_port = mvm_handle;
 		detach_stream.hdr.token = 0;
 		detach_stream.hdr.opcode = VSS_IMVM_CMD_DETACH_STREAM;
@@ -891,8 +773,7 @@ static int voice_destroy_mvm_cvs_session(struct voice_data *v)
 						      APR_PKT_VER);
 		cvs_destroy.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(cvs_destroy) - APR_HDR_SIZE);
-		cvs_destroy.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_destroy.src_port = v->session_id;
 		cvs_destroy.dest_port = cvs_handle;
 		cvs_destroy.token = 0;
 		cvs_destroy.opcode = APRV2_IBASIC_CMD_DESTROY_SESSION;
@@ -924,8 +805,7 @@ static int voice_destroy_mvm_cvs_session(struct voice_data *v)
 						      APR_PKT_VER);
 		mvm_destroy.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					    sizeof(mvm_destroy) - APR_HDR_SIZE);
-		mvm_destroy.src_port =
-				voice_get_idx_for_session(v->session_id);
+		mvm_destroy.src_port = v->session_id;
 		mvm_destroy.dest_port = mvm_handle;
 		mvm_destroy.token = 0;
 		mvm_destroy.opcode = APRV2_IBASIC_CMD_DESTROY_SESSION;
@@ -984,8 +864,7 @@ static int voice_send_tty_mode_cmd(struct voice_data *v)
 						APR_HDR_SIZE);
 		pr_debug("%s: pkt size = %d\n",
 			 __func__, mvm_tty_mode_cmd.hdr.pkt_size);
-		mvm_tty_mode_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		mvm_tty_mode_cmd.hdr.src_port = v->session_id;
 		mvm_tty_mode_cmd.hdr.dest_port = mvm_handle;
 		mvm_tty_mode_cmd.hdr.token = 0;
 		mvm_tty_mode_cmd.hdr.opcode = VSS_ISTREAM_CMD_SET_TTY_MODE;
@@ -1038,7 +917,7 @@ static int voice_send_set_pp_enable_cmd(struct voice_data *v,
 	cvs_set_pp_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 						   sizeof(cvs_set_pp_cmd) -
 						   APR_HDR_SIZE);
-	cvs_set_pp_cmd.hdr.src_port = voice_get_idx_for_session(v->session_id);
+	cvs_set_pp_cmd.hdr.src_port = v->session_id;
 	cvs_set_pp_cmd.hdr.dest_port = cvs_handle;
 	cvs_set_pp_cmd.hdr.token = 0;
 	cvs_set_pp_cmd.hdr.opcode = VSS_ICOMMON_CMD_SET_UI_PROPERTY;
@@ -1096,8 +975,7 @@ static int voice_set_dtx(struct voice_data *v)
 					      APR_PKT_VER);
 	cvs_set_dtx.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(cvs_set_dtx) - APR_HDR_SIZE);
-	cvs_set_dtx.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_set_dtx.hdr.src_port = v->session_id;
 	cvs_set_dtx.hdr.dest_port = cvs_handle;
 	cvs_set_dtx.hdr.token = 0;
 	cvs_set_dtx.hdr.opcode = VSS_ISTREAM_CMD_SET_ENC_DTX_MODE;
@@ -1150,8 +1028,7 @@ static int voice_send_mvm_media_type_cmd(struct voice_data *v)
 	mvm_set_cal_media_type.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(mvm_set_cal_media_type) -
 					APR_HDR_SIZE);
-	mvm_set_cal_media_type.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_set_cal_media_type.hdr.src_port = v->session_id;
 	mvm_set_cal_media_type.hdr.dest_port = mvm_handle;
 	mvm_set_cal_media_type.hdr.token = 0;
 	mvm_set_cal_media_type.hdr.opcode = VSS_IMVM_CMD_SET_CAL_MEDIA_TYPE;
@@ -1207,8 +1084,7 @@ static int voice_send_dtmf_rx_detection_cmd(struct voice_data *v,
 	cvs_dtmf_rx_detection.hdr.pkt_size =
 				APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvs_dtmf_rx_detection) - APR_HDR_SIZE);
-	cvs_dtmf_rx_detection.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_dtmf_rx_detection.hdr.src_port = v->session_id;
 	cvs_dtmf_rx_detection.hdr.dest_port = cvs_handle;
 	cvs_dtmf_rx_detection.hdr.token = 0;
 	cvs_dtmf_rx_detection.hdr.opcode =
@@ -1254,7 +1130,7 @@ void voc_disable_dtmf_det_on_active_sessions(void)
 	}
 }
 
-int voc_enable_dtmf_rx_detection(uint32_t session_id, uint32_t enable)
+int voc_enable_dtmf_rx_detection(uint16_t session_id, uint32_t enable)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -1305,8 +1181,7 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 	cvs_set_media_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 						sizeof(cvs_set_media_cmd) -
 						APR_HDR_SIZE);
-	cvs_set_media_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_set_media_cmd.hdr.src_port = v->session_id;
 	cvs_set_media_cmd.hdr.dest_port = cvs_handle;
 	cvs_set_media_cmd.hdr.token = 0;
 	cvs_set_media_cmd.hdr.opcode = VSS_ISTREAM_CMD_SET_MEDIA_TYPE;
@@ -1345,8 +1220,7 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 					APR_PKT_VER);
 		cvs_set_cdma_rate.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				      sizeof(cvs_set_cdma_rate) - APR_HDR_SIZE);
-		cvs_set_cdma_rate.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_set_cdma_rate.hdr.src_port = v->session_id;
 		cvs_set_cdma_rate.hdr.dest_port = cvs_handle;
 		cvs_set_cdma_rate.hdr.token = 0;
 		cvs_set_cdma_rate.hdr.opcode =
@@ -1383,8 +1257,7 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 				APR_PKT_VER);
 		cvs_set_amr_rate.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				       sizeof(cvs_set_amr_rate) - APR_HDR_SIZE);
-		cvs_set_amr_rate.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_set_amr_rate.hdr.src_port = v->session_id;
 		cvs_set_amr_rate.hdr.dest_port = cvs_handle;
 		cvs_set_amr_rate.hdr.token = 0;
 		cvs_set_amr_rate.hdr.opcode =
@@ -1425,8 +1298,7 @@ static int voice_config_cvs_vocoder(struct voice_data *v)
 		cvs_set_amrwb_rate.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 						sizeof(cvs_set_amrwb_rate) -
 						APR_HDR_SIZE);
-		cvs_set_amrwb_rate.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_set_amrwb_rate.hdr.src_port = v->session_id;
 		cvs_set_amrwb_rate.hdr.dest_port = cvs_handle;
 		cvs_set_amrwb_rate.hdr.token = 0;
 		cvs_set_amrwb_rate.hdr.opcode =
@@ -1498,8 +1370,7 @@ static int voice_send_start_voice_cmd(struct voice_data *v)
 				sizeof(mvm_start_voice_cmd) - APR_HDR_SIZE);
 	pr_debug("send mvm_start_voice_cmd pkt size = %d\n",
 				mvm_start_voice_cmd.pkt_size);
-	mvm_start_voice_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_start_voice_cmd.src_port = v->session_id;
 	mvm_start_voice_cmd.dest_port = mvm_handle;
 	mvm_start_voice_cmd.token = 0;
 	mvm_start_voice_cmd.opcode = VSS_IMVM_CMD_START_VOICE;
@@ -1549,8 +1420,7 @@ static int voice_send_disable_vocproc_cmd(struct voice_data *v)
 				sizeof(cvp_disable_cmd) - APR_HDR_SIZE);
 	pr_debug("cvp_disable_cmd pkt size = %d, cvp_handle=%d\n",
 		cvp_disable_cmd.pkt_size, cvp_handle);
-	cvp_disable_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_disable_cmd.src_port = v->session_id;
 	cvp_disable_cmd.dest_port = cvp_handle;
 	cvp_disable_cmd.token = 0;
 	cvp_disable_cmd.opcode = VSS_IVOCPROC_CMD_DISABLE;
@@ -1629,8 +1499,7 @@ static int voice_send_set_device_cmd(struct voice_data *v)
 				sizeof(cvp_setdev_cmd) - APR_HDR_SIZE);
 	pr_debug(" send create cvp setdev, pkt size = %d\n",
 			cvp_setdev_cmd.hdr.pkt_size);
-	cvp_setdev_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_setdev_cmd.hdr.src_port = v->session_id;
 	cvp_setdev_cmd.hdr.dest_port = cvp_handle;
 	cvp_setdev_cmd.hdr.token = 0;
 	cvp_setdev_cmd.hdr.opcode = VSS_IVOCPROC_CMD_SET_DEVICE_V2;
@@ -1696,8 +1565,7 @@ static int voice_send_stop_voice_cmd(struct voice_data *v)
 				sizeof(mvm_stop_voice_cmd) - APR_HDR_SIZE);
 	pr_debug("send mvm_stop_voice_cmd pkt size = %d\n",
 				mvm_stop_voice_cmd.pkt_size);
-	mvm_stop_voice_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_stop_voice_cmd.src_port = v->session_id;
 	mvm_stop_voice_cmd.dest_port = mvm_handle;
 	mvm_stop_voice_cmd.token = 0;
 	mvm_stop_voice_cmd.opcode = VSS_IMVM_CMD_STOP_VOICE;
@@ -1757,8 +1625,7 @@ static int voice_send_cvs_register_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvs_reg_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvs_reg_cal_cmd) - APR_HDR_SIZE);
-	cvs_reg_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_reg_cal_cmd.hdr.src_port = v->session_id;
 	cvs_reg_cal_cmd.hdr.dest_port = voice_get_cvs_handle(v);
 	cvs_reg_cal_cmd.hdr.token = 0;
 	cvs_reg_cal_cmd.hdr.opcode =
@@ -1823,8 +1690,7 @@ static int voice_send_cvs_deregister_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvs_dereg_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvs_dereg_cal_cmd) - APR_HDR_SIZE);
-	cvs_dereg_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_dereg_cal_cmd.hdr.src_port = v->session_id;
 	cvs_dereg_cal_cmd.hdr.dest_port = voice_get_cvs_handle(v);
 	cvs_dereg_cal_cmd.hdr.token = 0;
 	cvs_dereg_cal_cmd.hdr.opcode =
@@ -1889,8 +1755,7 @@ static int voice_send_cvp_register_dev_cfg_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_reg_dev_cfg_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_reg_dev_cfg_cmd) - APR_HDR_SIZE);
-	cvp_reg_dev_cfg_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_reg_dev_cfg_cmd.hdr.src_port = v->session_id;
 	cvp_reg_dev_cfg_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_reg_dev_cfg_cmd.hdr.token = 0;
 	cvp_reg_dev_cfg_cmd.hdr.opcode =
@@ -1952,8 +1817,7 @@ static int voice_send_cvp_deregister_dev_cfg_cmd(struct voice_data *v)
 					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_dereg_dev_cfg_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_dereg_dev_cfg_cmd) - APR_HDR_SIZE);
-	cvp_dereg_dev_cfg_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_dereg_dev_cfg_cmd.hdr.src_port = v->session_id;
 	cvp_dereg_dev_cfg_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_dereg_dev_cfg_cmd.hdr.token = 0;
 	cvp_dereg_dev_cfg_cmd.hdr.opcode =
@@ -2019,8 +1883,7 @@ static int voice_send_cvp_register_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_reg_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_reg_cal_cmd) - APR_HDR_SIZE);
-	cvp_reg_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_reg_cal_cmd.hdr.src_port = v->session_id;
 	cvp_reg_cal_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_reg_cal_cmd.hdr.token = 0;
 	cvp_reg_cal_cmd.hdr.opcode =
@@ -2085,8 +1948,7 @@ static int voice_send_cvp_deregister_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_dereg_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_dereg_cal_cmd) - APR_HDR_SIZE);
-	cvp_dereg_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_dereg_cal_cmd.hdr.src_port = v->session_id;
 	cvp_dereg_cal_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_dereg_cal_cmd.hdr.token = 0;
 	cvp_dereg_cal_cmd.hdr.opcode =
@@ -2150,8 +2012,7 @@ static int voice_send_cvp_register_vol_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_reg_vol_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_reg_vol_cal_cmd) - APR_HDR_SIZE);
-	cvp_reg_vol_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_reg_vol_cal_cmd.hdr.src_port = v->session_id;
 	cvp_reg_vol_cal_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_reg_vol_cal_cmd.hdr.token = 0;
 	cvp_reg_vol_cal_cmd.hdr.opcode =
@@ -2220,8 +2081,7 @@ static int voice_send_cvp_deregister_vol_cal_cmd(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	cvp_dereg_vol_cal_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvp_dereg_vol_cal_cmd) - APR_HDR_SIZE);
-	cvp_dereg_vol_cal_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_dereg_vol_cal_cmd.hdr.src_port = v->session_id;
 	cvp_dereg_vol_cal_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_dereg_vol_cal_cmd.hdr.token = 0;
 	cvp_dereg_vol_cal_cmd.hdr.opcode =
@@ -2360,8 +2220,7 @@ static int voice_map_memory_physical_cmd(struct voice_data *v,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	mvm_map_phys_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(mvm_map_phys_cmd) - APR_HDR_SIZE);
-	mvm_map_phys_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_map_phys_cmd.hdr.src_port = v->session_id;
 	mvm_map_phys_cmd.hdr.dest_port = voice_get_mvm_handle(v);
 	mvm_map_phys_cmd.hdr.token = token;
 	mvm_map_phys_cmd.hdr.opcode = VSS_IMEMORY_CMD_MAP_PHYSICAL;
@@ -2466,8 +2325,7 @@ static int voice_setup_vocproc(struct voice_data *v)
 				sizeof(cvp_session_cmd) - APR_HDR_SIZE);
 	pr_debug(" send create cvp session, pkt size = %d\n",
 		cvp_session_cmd.hdr.pkt_size);
-	cvp_session_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_session_cmd.hdr.src_port = v->session_id;
 	cvp_session_cmd.hdr.dest_port = 0;
 	cvp_session_cmd.hdr.token = 0;
 	cvp_session_cmd.hdr.opcode =
@@ -2598,8 +2456,7 @@ static int voice_send_enable_vocproc_cmd(struct voice_data *v)
 				sizeof(cvp_enable_cmd) - APR_HDR_SIZE);
 	pr_debug("cvp_enable_cmd pkt size = %d, cvp_handle=%d\n",
 		cvp_enable_cmd.pkt_size, cvp_handle);
-	cvp_enable_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_enable_cmd.src_port = v->session_id;
 	cvp_enable_cmd.dest_port = cvp_handle;
 	cvp_enable_cmd.token = 0;
 	cvp_enable_cmd.opcode = VSS_IVOCPROC_CMD_ENABLE;
@@ -2647,8 +2504,7 @@ static int voice_send_mvm_cal_network_cmd(struct voice_data *v)
 						APR_PKT_VER);
 	mvm_set_cal_network.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(mvm_set_cal_network) - APR_HDR_SIZE);
-	mvm_set_cal_network.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_set_cal_network.hdr.src_port = v->session_id;
 	mvm_set_cal_network.hdr.dest_port = mvm_handle;
 	mvm_set_cal_network.hdr.token = 0;
 	mvm_set_cal_network.hdr.opcode = VSS_IMVM_CMD_SET_CAL_NETWORK;
@@ -2707,8 +2563,7 @@ static int voice_send_netid_timing_cmd(struct voice_data *v)
 						APR_PKT_VER);
 	mvm_set_network.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(mvm_set_network) - APR_HDR_SIZE);
-	mvm_set_network.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_set_network.hdr.src_port = v->session_id;
 	mvm_set_network.hdr.dest_port = mvm_handle;
 	mvm_set_network.hdr.token = 0;
 	mvm_set_network.hdr.opcode = VSS_ICOMMON_CMD_SET_NETWORK;
@@ -2738,8 +2593,7 @@ static int voice_send_netid_timing_cmd(struct voice_data *v)
 	mvm_set_voice_timing.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 						sizeof(mvm_set_voice_timing) -
 						APR_HDR_SIZE);
-	mvm_set_voice_timing.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_set_voice_timing.hdr.src_port = v->session_id;
 	mvm_set_voice_timing.hdr.dest_port = mvm_handle;
 	mvm_set_voice_timing.hdr.token = 0;
 	mvm_set_voice_timing.hdr.opcode = VSS_ICOMMON_CMD_SET_VOICE_TIMING;
@@ -2797,8 +2651,7 @@ static int voice_send_attach_vocproc_cmd(struct voice_data *v)
 				sizeof(mvm_a_vocproc_cmd) - APR_HDR_SIZE);
 	pr_debug("send mvm_a_vocproc_cmd pkt size = %d\n",
 		mvm_a_vocproc_cmd.hdr.pkt_size);
-	mvm_a_vocproc_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_a_vocproc_cmd.hdr.src_port = v->session_id;
 	mvm_a_vocproc_cmd.hdr.dest_port = mvm_handle;
 	mvm_a_vocproc_cmd.hdr.token = 0;
 	mvm_a_vocproc_cmd.hdr.opcode = VSS_IMVM_CMD_ATTACH_VOCPROC;
@@ -2873,8 +2726,7 @@ static int voice_destroy_vocproc(struct voice_data *v)
 				sizeof(mvm_d_vocproc_cmd) - APR_HDR_SIZE);
 	pr_debug("mvm_d_vocproc_cmd  pkt size = %d\n",
 		mvm_d_vocproc_cmd.hdr.pkt_size);
-	mvm_d_vocproc_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mvm_d_vocproc_cmd.hdr.src_port = v->session_id;
 	mvm_d_vocproc_cmd.hdr.dest_port = mvm_handle;
 	mvm_d_vocproc_cmd.hdr.token = 0;
 	mvm_d_vocproc_cmd.hdr.opcode = VSS_IMVM_CMD_DETACH_VOCPROC;
@@ -2908,8 +2760,7 @@ static int voice_destroy_vocproc(struct voice_data *v)
 				sizeof(cvp_destroy_session_cmd) - APR_HDR_SIZE);
 	pr_debug("cvp_destroy_session_cmd pkt size = %d\n",
 		cvp_destroy_session_cmd.pkt_size);
-	cvp_destroy_session_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_destroy_session_cmd.src_port = v->session_id;
 	cvp_destroy_session_cmd.dest_port = cvp_handle;
 	cvp_destroy_session_cmd.token = 0;
 	cvp_destroy_session_cmd.opcode = APRV2_IBASIC_CMD_DESTROY_SESSION;
@@ -2961,8 +2812,7 @@ static int voice_send_mvm_unmap_memory_physical_cmd(struct voice_data *v,
 						APR_PKT_VER);
 	mem_unmap.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(mem_unmap) - APR_HDR_SIZE);
-	mem_unmap.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	mem_unmap.hdr.src_port = v->session_id;
 	mem_unmap.hdr.dest_port = mvm_handle;
 	mem_unmap.hdr.token = 0;
 	mem_unmap.hdr.opcode = VSS_IMEMORY_CMD_UNMAP;
@@ -3023,8 +2873,7 @@ static int voice_send_cvs_packet_exchange_config_cmd(struct voice_data *v)
 	packet_exchange_config_pkt.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(packet_exchange_config_pkt) -
 					 APR_HDR_SIZE);
-	packet_exchange_config_pkt.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	packet_exchange_config_pkt.hdr.src_port = v->session_id;
 	packet_exchange_config_pkt.hdr.dest_port = cvs_handle;
 	packet_exchange_config_pkt.hdr.token = 0;
 	packet_exchange_config_pkt.hdr.opcode =
@@ -3084,8 +2933,7 @@ static int voice_send_cvs_data_exchange_mode_cmd(struct voice_data *v)
 						APR_PKT_VER);
 	data_exchange_pkt.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(data_exchange_pkt) - APR_HDR_SIZE);
-	data_exchange_pkt.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	data_exchange_pkt.hdr.src_port = v->session_id;
 	data_exchange_pkt.hdr.dest_port = cvs_handle;
 	data_exchange_pkt.hdr.token = 0;
 	data_exchange_pkt.hdr.opcode = VSS_ISTREAM_CMD_SET_PACKET_EXCHANGE_MODE;
@@ -3108,6 +2956,56 @@ static int voice_send_cvs_data_exchange_mode_cmd(struct voice_data *v)
 fail:
 	return -EINVAL;
 }
+
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [START]
+static int voice_send_phonememo_mute_cmd(struct voice_data *v)
+{
+	struct cvp_set_mute_cmd cvp_mute_cmd;
+	int ret = 0;
+
+	if (v == NULL) {
+		pr_err("%s: v is NULL\n", __func__);
+		goto fail;
+	}
+
+	if (!common.apr_q6_cvp) {
+		pr_err("%s: apr_cvp is NULL.\n", __func__);
+		goto fail;
+	}
+
+	cvp_mute_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						APR_HDR_LEN(APR_HDR_SIZE),
+						APR_PKT_VER);
+	cvp_mute_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+					sizeof(cvp_mute_cmd) - APR_HDR_SIZE);
+	cvp_mute_cmd.hdr.src_port = v->session_id;
+	cvp_mute_cmd.hdr.dest_port = voice_get_cvp_handle(v);
+	cvp_mute_cmd.hdr.token = 0;
+	cvp_mute_cmd.hdr.opcode = VSS_IVOLUME_CMD_MUTE_V2;
+	cvp_mute_cmd.cvp_set_mute.direction = VSS_IVOLUME_DIRECTION_TX;
+	cvp_mute_cmd.cvp_set_mute.mute_flag = v->stream_tx.stream_mute;
+	cvp_mute_cmd.cvp_set_mute.ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
+
+	v->cvp_state = CMD_STATUS_FAIL;
+	ret = apr_send_pkt(common.apr_q6_cvp, (uint32_t *) &cvp_mute_cmd);
+	if (ret < 0) {
+		pr_err("%s: Error %d sending rx device cmd\n", __func__, ret);
+		goto fail;
+	}
+	ret = wait_event_timeout(v->cvp_wait,
+				(v->cvp_state == CMD_STATUS_SUCCESS),
+				msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: Command timeout\n", __func__);
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	return -EINVAL;
+}
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [END]
 
 static int voice_send_stream_mute_cmd(struct voice_data *v)
 {
@@ -3132,15 +3030,13 @@ static int voice_send_stream_mute_cmd(struct voice_data *v)
 						APR_PKT_VER);
 	cvs_mute_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(cvs_mute_cmd) - APR_HDR_SIZE);
-	cvs_mute_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvs_mute_cmd.hdr.src_port = v->session_id;
 	cvs_mute_cmd.hdr.dest_port = voice_get_cvs_handle(v);
 	cvs_mute_cmd.hdr.token = 0;
 	cvs_mute_cmd.hdr.opcode = VSS_IVOLUME_CMD_MUTE_V2;
 	cvs_mute_cmd.cvs_set_mute.direction = VSS_IVOLUME_DIRECTION_TX;
 	cvs_mute_cmd.cvs_set_mute.mute_flag = v->stream_tx.stream_mute;
-	cvs_mute_cmd.cvs_set_mute.ramp_duration_ms =
-				v->stream_tx.stream_mute_ramp_duration_ms;
+	cvs_mute_cmd.cvs_set_mute.ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
 
 	v->cvs_state = CMD_STATUS_FAIL;
 	ret = apr_send_pkt(common.apr_q6_cvs, (uint32_t *) &cvs_mute_cmd);
@@ -3165,7 +3061,7 @@ fail:
 }
 
 static int voice_send_device_mute_cmd(struct voice_data *v, uint16_t direction,
-				     uint16_t mute_flag, uint32_t ramp_duration)
+				      uint16_t mute_flag)
 {
 	struct cvp_set_mute_cmd cvp_mute_cmd;
 	int ret = 0;
@@ -3187,14 +3083,13 @@ static int voice_send_device_mute_cmd(struct voice_data *v, uint16_t direction,
 						APR_PKT_VER);
 	cvp_mute_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(cvp_mute_cmd) - APR_HDR_SIZE);
-	cvp_mute_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+	cvp_mute_cmd.hdr.src_port = v->session_id;
 	cvp_mute_cmd.hdr.dest_port = voice_get_cvp_handle(v);
 	cvp_mute_cmd.hdr.token = 0;
 	cvp_mute_cmd.hdr.opcode = VSS_IVOLUME_CMD_MUTE_V2;
 	cvp_mute_cmd.cvp_set_mute.direction = direction;
 	cvp_mute_cmd.cvp_set_mute.mute_flag = mute_flag;
-	cvp_mute_cmd.cvp_set_mute.ramp_duration_ms = ramp_duration;
+	cvp_mute_cmd.cvp_set_mute.ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
 
 	v->cvp_state = CMD_STATUS_FAIL;
 	ret = apr_send_pkt(common.apr_q6_cvp, (uint32_t *) &cvp_mute_cmd);
@@ -3218,9 +3113,9 @@ fail:
 	return -EINVAL;
 }
 
-static int voice_send_vol_step_cmd(struct voice_data *v)
+static int voice_send_vol_index_cmd(struct voice_data *v)
 {
-	struct cvp_set_rx_volume_step_cmd cvp_vol_step_cmd;
+	struct cvp_set_rx_volume_index_cmd cvp_vol_cmd;
 	int ret = 0;
 	void *apr_cvp;
 	u16 cvp_handle;
@@ -3237,29 +3132,20 @@ static int voice_send_vol_step_cmd(struct voice_data *v)
 	cvp_handle = voice_get_cvp_handle(v);
 
 	/* send volume index to cvp */
-	cvp_vol_step_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+	cvp_vol_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 						APR_HDR_LEN(APR_HDR_SIZE),
 						APR_PKT_VER);
-	cvp_vol_step_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
-				sizeof(cvp_vol_step_cmd) - APR_HDR_SIZE);
-	cvp_vol_step_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
-	cvp_vol_step_cmd.hdr.dest_port = cvp_handle;
-	cvp_vol_step_cmd.hdr.token = 0;
-	cvp_vol_step_cmd.hdr.opcode = VSS_IVOLUME_CMD_SET_STEP;
-	cvp_vol_step_cmd.cvp_set_vol_step.direction = VSS_IVOLUME_DIRECTION_RX;
-	cvp_vol_step_cmd.cvp_set_vol_step.value = v->dev_rx.volume_step_value;
-	cvp_vol_step_cmd.cvp_set_vol_step.ramp_duration_ms =
-					v->dev_rx.volume_ramp_duration_ms;
-	 pr_debug("%s step_value:%d, ramp_duration_ms:%d",
-			__func__,
-			cvp_vol_step_cmd.cvp_set_vol_step.value,
-			cvp_vol_step_cmd.cvp_set_vol_step.ramp_duration_ms);
-
+	cvp_vol_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+					sizeof(cvp_vol_cmd) - APR_HDR_SIZE);
+	cvp_vol_cmd.hdr.src_port = v->session_id;
+	cvp_vol_cmd.hdr.dest_port = cvp_handle;
+	cvp_vol_cmd.hdr.token = 0;
+	cvp_vol_cmd.hdr.opcode = VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX;
+	cvp_vol_cmd.cvp_set_vol_idx.vol_index = v->dev_rx.volume;
 	v->cvp_state = CMD_STATUS_FAIL;
-	ret = apr_send_pkt(apr_cvp, (uint32_t *) &cvp_vol_step_cmd);
+	ret = apr_send_pkt(apr_cvp, (uint32_t *) &cvp_vol_cmd);
 	if (ret < 0) {
-		pr_err("Fail in sending RX VOL step\n");
+		pr_err("Fail in sending RX VOL INDEX\n");
 		return -EINVAL;
 	}
 	ret = wait_event_timeout(v->cvp_wait,
@@ -3300,8 +3186,7 @@ static int voice_cvs_start_record(struct voice_data *v, uint32_t rec_mode)
 					APR_PKT_VER);
 		cvs_start_record.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				  sizeof(cvs_start_record) - APR_HDR_SIZE);
-		cvs_start_record.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_start_record.hdr.src_port = v->session_id;
 		cvs_start_record.hdr.dest_port = cvs_handle;
 		cvs_start_record.hdr.token = 0;
 		cvs_start_record.hdr.opcode = VSS_IRECORD_CMD_START;
@@ -3386,8 +3271,7 @@ static int voice_cvs_stop_record(struct voice_data *v)
 				  APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 		cvs_stop_record.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				  sizeof(cvs_stop_record) - APR_HDR_SIZE);
-		cvs_stop_record.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_stop_record.src_port = v->session_id;
 		cvs_stop_record.dest_port = cvs_handle;
 		cvs_stop_record.token = 0;
 		cvs_stop_record.opcode = VSS_IRECORD_CMD_STOP;
@@ -3558,14 +3442,12 @@ static int voice_cvs_start_playback(struct voice_data *v)
 					APR_PKT_VER);
 		cvs_start_playback.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvs_start_playback) - APR_HDR_SIZE);
-		cvs_start_playback.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_start_playback.hdr.src_port = v->session_id;
 		cvs_start_playback.hdr.dest_port = cvs_handle;
 		cvs_start_playback.hdr.token = 0;
 		cvs_start_playback.hdr.opcode = VSS_IPLAYBACK_CMD_START;
 		cvs_start_playback.playback_mode.port_id =
-						v->music_info.port_id;
-
+						VSS_IPLAYBACK_PORT_ID_DEFAULT;
 		v->cvs_state = CMD_STATUS_FAIL;
 
 		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_start_playback);
@@ -3624,8 +3506,7 @@ static int voice_cvs_stop_playback(struct voice_data *v)
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 		cvs_stop_playback.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 				sizeof(cvs_stop_playback) - APR_HDR_SIZE);
-		cvs_stop_playback.src_port =
-				voice_get_idx_for_session(v->session_id);
+		cvs_stop_playback.src_port = v->session_id;
 		cvs_stop_playback.dest_port = cvs_handle;
 		cvs_stop_playback.token = 0;
 
@@ -3663,21 +3544,17 @@ fail:
 	return ret;
 }
 
-int voc_start_playback(uint32_t set, uint16_t port_id)
+int voc_start_playback(uint32_t set)
 {
 	int ret = 0;
 	u16 cvs_handle;
+	int i;
 
-	struct voice_data *v = NULL;
 
-	if (port_id == VOICE_PLAYBACK_TX)
-		v = voice_get_session(voc_get_session_id(VOICE_SESSION_NAME));
-	else if (port_id == VOICE2_PLAYBACK_TX)
-		v = voice_get_session(voc_get_session_id(VOICE2_SESSION_NAME));
+	for (i = 0; i < MAX_VOC_SESSIONS; i++) {
+		struct voice_data *v = &common.voice[i];
 
-	if (v != NULL) {
 		mutex_lock(&v->lock);
-		v->music_info.port_id = port_id;
 		v->music_info.play_enable = set;
 		if (set)
 			v->music_info.count++;
@@ -3695,14 +3572,12 @@ int voc_start_playback(uint32_t set, uint16_t port_id)
 		}
 
 		mutex_unlock(&v->lock);
-	} else {
-		pr_err("%s: Invalid port_id 0x%x", __func__, port_id);
 	}
 
 	return ret;
 }
 
-int voc_disable_cvp(uint32_t session_id)
+int voc_disable_cvp(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -3736,7 +3611,7 @@ fail:	mutex_unlock(&v->lock);
 	return ret;
 }
 
-int voc_enable_cvp(uint32_t session_id)
+int voc_enable_cvp(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -3764,28 +3639,22 @@ int voc_enable_cvp(uint32_t session_id)
 			pr_debug("%s: TX and RX mute ON\n", __func__);
 
 			voice_send_device_mute_cmd(v,
-						VSS_IVOLUME_DIRECTION_TX,
-						VSS_IVOLUME_MUTE_ON,
-						DEFAULT_MUTE_RAMP_DURATION);
+						   VSS_IVOLUME_DIRECTION_TX,
+						   VSS_IVOLUME_MUTE_ON);
 			voice_send_device_mute_cmd(v,
-						VSS_IVOLUME_DIRECTION_RX,
-						VSS_IVOLUME_MUTE_ON,
-						DEFAULT_MUTE_RAMP_DURATION);
+						   VSS_IVOLUME_DIRECTION_RX,
+						   VSS_IVOLUME_MUTE_ON);
 		} else if (v->lch_mode == VOICE_LCH_STOP) {
 			pr_debug("%s: TX and RX mute OFF\n", __func__);
 
 			voice_send_device_mute_cmd(v,
-						VSS_IVOLUME_DIRECTION_TX,
-						VSS_IVOLUME_MUTE_OFF,
-						DEFAULT_MUTE_RAMP_DURATION);
+						   VSS_IVOLUME_DIRECTION_TX,
+						   VSS_IVOLUME_MUTE_OFF);
 			voice_send_device_mute_cmd(v,
-						VSS_IVOLUME_DIRECTION_RX,
-						VSS_IVOLUME_MUTE_OFF,
-						DEFAULT_MUTE_RAMP_DURATION);
+						   VSS_IVOLUME_DIRECTION_RX,
+						   VSS_IVOLUME_MUTE_OFF);
 			/* Reset lch mode when VOICE_LCH_STOP is recieved */
 			v->lch_mode = 0;
-			/* Apply cached mute setting */
-			voice_send_stream_mute_cmd(v);
 		} else {
 			pr_debug("%s: Mute commands not sent for lch_mode=%d\n",
 				 __func__, v->lch_mode);
@@ -3817,7 +3686,7 @@ fail:
 	return ret;
 }
 
-static int voice_set_packet_exchange_mode_and_config(uint32_t session_id,
+static int voice_set_packet_exchange_mode_and_config(uint16_t session_id,
 						 uint32_t mode)
 {
 	struct voice_data *v = voice_get_session(session_id);
@@ -3849,71 +3718,84 @@ fail:
 	return -EINVAL;
 }
 
-int voc_set_tx_mute(uint32_t session_id, uint32_t dir, uint32_t mute,
-		    uint32_t ramp_duration)
+int voc_set_tx_mute(uint16_t session_id, uint32_t dir, uint32_t mute)
 {
-	struct voice_data *v = NULL;
+	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-	struct voice_session_itr itr;
 
-	voice_itr_init(&itr, session_id);
-	while (voice_itr_get_next_session(&itr, &v)) {
-		if (v != NULL) {
-			mutex_lock(&v->lock);
-			v->stream_tx.stream_mute = mute;
-			v->stream_tx.stream_mute_ramp_duration_ms =
-								ramp_duration;
-			if (is_voc_state_active(v->voc_state) &&
-				(v->lch_mode == 0))
-				ret = voice_send_stream_mute_cmd(v);
-			mutex_unlock(&v->lock);
-		} else {
-			pr_err("%s: invalid session_id 0x%x\n", __func__,
-				session_id);
+	if (v == NULL) {
+		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
-			ret = -EINVAL;
-			break;
-		}
+		return -EINVAL;
 	}
+
+	mutex_lock(&v->lock);
+
+	v->stream_tx.stream_mute = mute;
+
+	if ((v->voc_state == VOC_RUN) ||
+	    (v->voc_state == VOC_CHANGE) ||
+	    (v->voc_state == VOC_STANDBY))
+		ret = voice_send_stream_mute_cmd(v);
+
+	mutex_unlock(&v->lock);
 
 	return ret;
 }
 
-int voc_set_rx_device_mute(uint32_t session_id, uint32_t mute,
-					uint32_t ramp_duration)
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [START]
+int voc_set_phonememo_tx_mute(uint16_t session_id, uint32_t dir, uint32_t mute)
 {
-	struct voice_data *v = NULL;
+	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-	struct voice_session_itr itr;
 
-	voice_itr_init(&itr, session_id);
-	while (voice_itr_get_next_session(&itr, &v)) {
-		if (v != NULL) {
-			mutex_lock(&v->lock);
-			v->dev_rx.dev_mute = mute;
-			v->dev_rx.dev_mute_ramp_duration_ms =
-							ramp_duration;
-			if (((v->voc_state == VOC_RUN) ||
-				(v->voc_state == VOC_STANDBY)) &&
-				(v->lch_mode == 0))
-				ret = voice_send_device_mute_cmd(v,
-						VSS_IVOLUME_DIRECTION_RX,
-						v->dev_rx.dev_mute,
-						ramp_duration);
-			mutex_unlock(&v->lock);
-		} else {
-			pr_err("%s: invalid session_id 0x%x\n", __func__,
-				session_id);
+	if (v == NULL) {
+		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
-			ret = -EINVAL;
-			break;
-		}
+		return -EINVAL;
 	}
+
+	mutex_lock(&v->lock);
+
+	v->stream_tx.stream_mute = mute;
+
+	if ((v->voc_state == VOC_RUN) ||
+	    (v->voc_state == VOC_CHANGE) ||
+	    (v->voc_state == VOC_STANDBY))
+		ret = voice_send_phonememo_mute_cmd(v);
+
+	mutex_unlock(&v->lock);
+
+	return ret;
+}
+//[Audio][BSP] sehwan.lee@lge.com phonememo initial code [END]
+
+int voc_set_rx_device_mute(uint16_t session_id, uint32_t mute)
+{
+	struct voice_data *v = voice_get_session(session_id);
+	int ret = 0;
+
+	if (v == NULL) {
+		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
+
+		return -EINVAL;
+	}
+
+	mutex_lock(&v->lock);
+
+	v->dev_rx.dev_mute = mute;
+
+	if (v->voc_state == VOC_RUN)
+		ret = voice_send_device_mute_cmd(v,
+						 VSS_IVOLUME_DIRECTION_RX,
+						 v->dev_rx.dev_mute);
+
+	mutex_unlock(&v->lock);
 
 	return ret;
 }
 
-int voc_get_rx_device_mute(uint32_t session_id)
+int voc_get_rx_device_mute(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -3933,7 +3815,7 @@ int voc_get_rx_device_mute(uint32_t session_id)
 	return ret;
 }
 
-int voc_set_tty_mode(uint32_t session_id, uint8_t tty_mode)
+int voc_set_tty_mode(uint16_t session_id, uint8_t tty_mode)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -3953,7 +3835,7 @@ int voc_set_tty_mode(uint32_t session_id, uint8_t tty_mode)
 	return ret;
 }
 
-uint8_t voc_get_tty_mode(uint32_t session_id)
+uint8_t voc_get_tty_mode(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -3973,43 +3855,34 @@ uint8_t voc_get_tty_mode(uint32_t session_id)
 	return ret;
 }
 
-int voc_set_pp_enable(uint32_t session_id, uint32_t module_id, uint32_t enable)
+int voc_set_pp_enable(uint16_t session_id, uint32_t module_id, uint32_t enable)
 {
-	struct voice_data *v = NULL;
+	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-	struct voice_session_itr itr;
 
-	voice_itr_init(&itr, session_id);
-	while (voice_itr_get_next_session(&itr, &v)) {
-		if (v != NULL) {
-			if (!(is_voice_app_id(v->session_id) ||
-			      is_volte_session(v->session_id)))
-				continue;
+	if (v == NULL) {
+		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
-			mutex_lock(&v->lock);
-			if (module_id == MODULE_ID_VOICE_MODULE_ST)
-				v->st_enable = enable;
+		return -EINVAL;
+	}
 
-			if (v->voc_state == VOC_RUN) {
-				if (module_id ==
-				    MODULE_ID_VOICE_MODULE_ST)
-					ret = voice_send_set_pp_enable_cmd(v,
+	mutex_lock(&v->lock);
+	if (module_id == MODULE_ID_VOICE_MODULE_ST)
+		v->st_enable = enable;
+
+	if (v->voc_state == VOC_RUN) {
+		if (module_id == MODULE_ID_VOICE_MODULE_ST)
+			ret = voice_send_set_pp_enable_cmd(v,
 						MODULE_ID_VOICE_MODULE_ST,
 						enable);
-			}
-			mutex_unlock(&v->lock);
-		} else {
-			pr_err("%s: invalid session_id 0x%x\n", __func__,
-								session_id);
-			ret =  -EINVAL;
-			break;
-		}
 	}
+
+	mutex_unlock(&v->lock);
 
 	return ret;
 }
 
-int voc_get_pp_enable(uint32_t session_id, uint32_t module_id)
+int voc_get_pp_enable(uint16_t session_id, uint32_t module_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4028,38 +3901,32 @@ int voc_get_pp_enable(uint32_t session_id, uint32_t module_id)
 	return ret;
 }
 
-int voc_set_rx_vol_step(uint32_t session_id, uint32_t dir, uint32_t vol_step,
-			uint32_t ramp_duration)
+int voc_set_rx_vol_index(uint16_t session_id, uint32_t dir, uint32_t vol_idx)
 {
-	struct voice_data *v = NULL;
+	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-	struct voice_session_itr itr;
 
-	pr_debug("%s session id = %#x vol = %u", __func__, session_id,
-		vol_step);
+	if (v == NULL) {
+		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
-	voice_itr_init(&itr, session_id);
-	while (voice_itr_get_next_session(&itr, &v)) {
-		if (v != NULL) {
-			mutex_lock(&v->lock);
-			v->dev_rx.volume_step_value = vol_step;
-			v->dev_rx.volume_ramp_duration_ms = ramp_duration;
-			if (is_voc_state_active(v->voc_state))
-				ret = voice_send_vol_step_cmd(v);
-			mutex_unlock(&v->lock);
-		} else {
-			pr_err("%s: invalid session_id 0x%x\n", __func__,
-				session_id);
-
-			ret = -EINVAL;
-			break;
-		}
+		return -EINVAL;
 	}
+
+	mutex_lock(&v->lock);
+
+	v->dev_rx.volume = vol_idx;
+
+	if ((v->voc_state == VOC_RUN) ||
+	    (v->voc_state == VOC_CHANGE) ||
+	    (v->voc_state == VOC_STANDBY))
+		ret = voice_send_vol_index_cmd(v);
+
+	mutex_unlock(&v->lock);
 
 	return ret;
 }
 
-int voc_set_rxtx_port(uint32_t session_id, uint32_t port_id, uint32_t dev_type)
+int voc_set_rxtx_port(uint16_t session_id, uint32_t port_id, uint32_t dev_type)
 {
 	struct voice_data *v = voice_get_session(session_id);
 
@@ -4083,7 +3950,7 @@ int voc_set_rxtx_port(uint32_t session_id, uint32_t port_id, uint32_t dev_type)
 	return 0;
 }
 
-int voc_set_route_flag(uint32_t session_id, uint8_t path_dir, uint8_t set)
+int voc_set_route_flag(uint16_t session_id, uint8_t path_dir, uint8_t set)
 {
 	struct voice_data *v = voice_get_session(session_id);
 
@@ -4107,7 +3974,7 @@ int voc_set_route_flag(uint32_t session_id, uint8_t path_dir, uint8_t set)
 	return 0;
 }
 
-uint8_t voc_get_route_flag(uint32_t session_id, uint8_t path_dir)
+uint8_t voc_get_route_flag(uint16_t session_id, uint8_t path_dir)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4130,7 +3997,7 @@ uint8_t voc_get_route_flag(uint32_t session_id, uint8_t path_dir)
 	return ret;
 }
 
-int voc_end_voice_call(uint32_t session_id)
+int voc_end_voice_call(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4159,7 +4026,7 @@ int voc_end_voice_call(uint32_t session_id)
 	return ret;
 }
 
-int voc_standby_voice_call(uint32_t session_id)
+int voc_standby_voice_call(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	struct apr_hdr mvm_standby_voice_cmd;
@@ -4188,8 +4055,7 @@ int voc_standby_voice_call(uint32_t session_id)
 			sizeof(mvm_standby_voice_cmd) - APR_HDR_SIZE);
 		pr_debug("send mvm_standby_voice_cmd pkt size = %d\n",
 			 mvm_standby_voice_cmd.pkt_size);
-		mvm_standby_voice_cmd.src_port =
-				voice_get_idx_for_session(v->session_id);
+		mvm_standby_voice_cmd.src_port = v->session_id;
 		mvm_standby_voice_cmd.dest_port = mvm_handle;
 		mvm_standby_voice_cmd.token = 0;
 		mvm_standby_voice_cmd.opcode = VSS_IMVM_CMD_STANDBY_VOICE;
@@ -4207,7 +4073,7 @@ fail:
 	return ret;
 }
 
-int voc_set_lch(uint32_t session_id, enum voice_lch_mode lch_mode)
+int voc_set_lch(uint16_t session_id, enum voice_lch_mode lch_mode)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4250,7 +4116,7 @@ done:
 	return ret;
 }
 
-int voc_resume_voice_call(uint32_t session_id)
+int voc_resume_voice_call(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4266,7 +4132,7 @@ fail:
 	return -EINVAL;
 }
 
-int voc_start_voice_call(uint32_t session_id)
+int voc_start_voice_call(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -4338,7 +4204,7 @@ int voc_start_voice_call(uint32_t session_id)
 			goto fail;
 		}
 
-		ret = voice_send_vol_step_cmd(v);
+		ret = voice_send_vol_index_cmd(v);
 		if (ret < 0)
 			pr_err("voice volume failed\n");
 
@@ -4396,7 +4262,7 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 	struct common_data *c = NULL;
 	struct voice_data *v = NULL;
 	int i = 0;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	if ((data == NULL) || (priv == NULL)) {
 		pr_err("%s: data or priv is NULL\n", __func__);
@@ -4442,7 +4308,7 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 
 	pr_debug("%s: session_id 0x%x\n", __func__, data->dest_port);
 
-	v = voice_get_session_by_idx(data->dest_port);
+	v = voice_get_session(data->dest_port);
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 
@@ -4534,7 +4400,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 	struct common_data *c = NULL;
 	struct voice_data *v = NULL;
 	int i = 0;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	if ((data == NULL) || (priv == NULL)) {
 		pr_err("%s: data or priv is NULL\n", __func__);
@@ -4579,7 +4445,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 		return 0;
 	}
 
-	v = voice_get_session_by_idx(data->dest_port);
+	v = voice_get_session(data->dest_port);
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 
@@ -4681,8 +4547,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 			APR_PKT_SIZE(APR_HDR_SIZE,
 			sizeof(send_enc_buf_consumed_cmd) - APR_HDR_SIZE);
 
-		send_enc_buf_consumed_cmd.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		send_enc_buf_consumed_cmd.hdr.src_port = v->session_id;
 		send_enc_buf_consumed_cmd.hdr.dest_port = cvs_handle;
 		send_enc_buf_consumed_cmd.hdr.token = 0;
 		send_enc_buf_consumed_cmd.hdr.opcode =
@@ -4728,8 +4593,7 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 		send_dec_buf.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
 					sizeof(send_dec_buf) - APR_HDR_SIZE);
 
-		send_dec_buf.hdr.src_port =
-				voice_get_idx_for_session(v->session_id);
+		send_dec_buf.hdr.src_port = v->session_id;
 		send_dec_buf.hdr.dest_port = cvs_handle;
 		send_dec_buf.hdr.token = 0;
 		send_dec_buf.hdr.opcode =
@@ -4810,7 +4674,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 	struct common_data *c = NULL;
 	struct voice_data *v = NULL;
 	int i = 0;
-	uint32_t session_id = 0;
+	uint16_t session_id = 0;
 
 	if ((data == NULL) || (priv == NULL)) {
 		pr_err("%s: data or priv is NULL\n", __func__);
@@ -4851,7 +4715,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 		return 0;
 	}
 
-	v = voice_get_session_by_idx(data->dest_port);
+	v = voice_get_session(data->dest_port);
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 
@@ -4881,7 +4745,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 				wake_up(&v->cvp_wait);
 				break;
 			case VSS_IVOCPROC_CMD_SET_DEVICE_V2:
-			case VSS_IVOLUME_CMD_SET_STEP:
+			case VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX:
 			case VSS_IVOCPROC_CMD_ENABLE:
 			case VSS_IVOCPROC_CMD_DISABLE:
 			case APRV2_IBASIC_CMD_DESTROY_SESSION:
@@ -5056,32 +4920,21 @@ static int __init voice_init(void)
 
 	/* set default value */
 	common.default_mute_val = 0;  /* default is un-mute */
+	common.default_vol_val = 0;
 	common.default_sample_val = 8000;
-	common.default_vol_step_val = 0;
-	common.default_vol_ramp_duration_ms = DEFAULT_VOLUME_RAMP_DURATION;
-	common.default_mute_ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
 
 	/* Initialize MVS info. */
 	common.mvs_info.network_type = VSS_NETWORK_ID_DEFAULT;
 
 	mutex_init(&common.common_lock);
 
-	/* Initialize session id with vsid */
-	init_session_id();
-
 	for (i = 0; i < MAX_VOC_SESSIONS; i++) {
+		common.voice[i].session_id = SESSION_ID_BASE + i;
 
 		/* initialize dev_rx and dev_tx */
+		common.voice[i].dev_rx.volume = common.default_vol_val;
 		common.voice[i].dev_rx.dev_mute =  common.default_mute_val;
 		common.voice[i].dev_tx.dev_mute =  common.default_mute_val;
-		common.voice[i].dev_rx.volume_step_value =
-					common.default_vol_step_val;
-		common.voice[i].dev_rx.volume_ramp_duration_ms =
-					common.default_vol_ramp_duration_ms;
-		common.voice[i].dev_rx.dev_mute_ramp_duration_ms =
-					common.default_mute_ramp_duration_ms;
-		common.voice[i].dev_tx.dev_mute_ramp_duration_ms =
-					common.default_mute_ramp_duration_ms;
 		common.voice[i].stream_rx.stream_mute = common.default_mute_val;
 		common.voice[i].stream_tx.stream_mute = common.default_mute_val;
 

@@ -27,6 +27,7 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/power/bq51053b_charger.h>
+#include <linux/delay.h>
 #ifdef CONFIG_SMB349_CHARGER
 #include <linux/i2c/smb349_charger.h>
 #endif
@@ -40,7 +41,9 @@ struct bq51053b_wlc_chip {
 	struct work_struct wireless_interrupt_work;
 	struct delayed_work wireless_set_online_work;
 	struct delayed_work wireless_set_offline_work;
+	struct delayed_work wireless_eoc_work;
 	struct wake_lock wireless_chip_wake_lock;
+	struct wake_lock wireless_eoc_wake_lock;
 
 	unsigned int wlc_int_gpio;
 	unsigned int wlc_full_chg;
@@ -265,6 +268,32 @@ static irqreturn_t wireless_interrupt_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void wireless_eoc_work(struct work_struct *work)
+{
+	struct bq51053b_wlc_chip *chip = container_of(work,
+		struct bq51053b_wlc_chip,wireless_eoc_work.work);
+
+	wake_lock(&chip->wireless_eoc_wake_lock);
+
+	gpio_set_value(chip->wlc_full_chg, 1);
+	pr_err("[WLC] %s : Send EPT signal!! \n",__func__);
+	msleep(3500);
+	gpio_set_value(chip->wlc_full_chg, 0);
+	pr_err("[WLC] %s : Re-enable RX!! \n",__func__);
+
+	wake_unlock(&chip->wireless_eoc_wake_lock);
+}
+
+int wireless_charging_completed()
+{
+	pr_err("[WLC] %s \n",__func__);
+	schedule_delayed_work(&the_chip->wireless_eoc_work,
+			round_jiffies_relative(msecs_to_jiffies(2000)));
+	return 1;
+}
+
+EXPORT_SYMBOL(wireless_charging_completed);
+
 static int __devinit bq51053b_wlc_hw_init(struct bq51053b_wlc_chip *chip)
 {
 	int ret;
@@ -401,9 +430,12 @@ static int __devinit bq51053b_wlc_probe(struct platform_device *pdev)
 	INIT_WORK(&chip->wireless_interrupt_work, wireless_interrupt_worker);
 	INIT_DELAYED_WORK(&chip->wireless_set_online_work,wireless_set_online_work);
 	INIT_DELAYED_WORK(&chip->wireless_set_offline_work,wireless_set_offline_work);
+	INIT_DELAYED_WORK(&chip->wireless_eoc_work,wireless_eoc_work);
 	/*Set  Wake lock for wlc*/
 	wake_lock_init(&chip->wireless_chip_wake_lock, WAKE_LOCK_SUSPEND,
 		       "bq51053b_wireless_chip");
+	wake_lock_init(&chip->wireless_eoc_wake_lock, WAKE_LOCK_SUSPEND,
+		       "bq51053b_wireless_eoc");
 
 	/*Set GPIO & Enable GPIO IRQ for wlc*/
 	chip->wlc_int_gpio = pdata->wlc_int_gpio;
@@ -446,6 +478,7 @@ static int __devexit bq51053b_wlc_remove(struct platform_device *pdev)
 
 	pr_err("[WLC] %s :remove\n", __func__);
 	wake_lock_destroy(&chip->wireless_chip_wake_lock);
+	wake_lock_destroy(&chip->wireless_eoc_wake_lock);
 	the_chip = NULL;
 	platform_set_drvdata(pdev, NULL);
 	power_supply_unregister(&chip->wireless_psy);

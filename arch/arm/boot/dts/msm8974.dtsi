@@ -24,19 +24,6 @@
 		sdhc2 = &sdhc_2; /* SDC2 SD card slot */
 		sdhc3 = &sdhc_3; /* SDC3 SDIO slot */
 		sdhc4 = &sdhc_4; /* SDC4 SDIO slot */
-
-		/* smdtty devices */
-		smd1 = &smdtty_apps_fm;
-		smd2 = &smdtty_apps_riva_bt_acl;
-		smd3 = &smdtty_apps_riva_bt_cmd;
-		smd4 = &smdtty_mbalbridge;
-		smd5 = &smdtty_apps_riva_ant_cmd;
-		smd6 = &smdtty_apps_riva_ant_data;
-		smd7 = &smdtty_data1;
-		smd11 = &smdtty_data11;
-		smd21 = &smdtty_data21;
-		smd27 = &smdtty_gps_nmea;
-		smd36 = &smdtty_loopback;
 	};
 
 	cpus {
@@ -213,7 +200,7 @@
 		interrupts = <0 44 0>;
 		qcom,hfi = "venus";
 		qcom,has-ocmem;
-		qcom,max-hw-load = <1224450>; /* 4k @ 30 + 1080p @ 30*/
+		qcom,max-hw-load = <1232160>; /* 4k @ 30 + 1080p @ 30*/
 	};
 
 	qcom,vidc {
@@ -278,24 +265,6 @@
 		qcom,msm-bus,vectors-KBps =
 				<87 512 0 0>,
 				<87 512 60000 960000>;
-	};
-
-	rmtfs_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd80000 0x00180000>;
-		reg-names = "rmtfs";
-	};
-
-	dsp_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd60000 0x00020000>;
-		reg-names = "rfsa_dsp";
-	};
-
-	mdm_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0fd60000 0x00020000>;
-		reg-names = "rfsa_mdm";
 	};
 
 	sdcc1: qcom,sdcc@f9824000 {
@@ -633,10 +602,10 @@
 			"MSM_TSIF1_PHYS",
 			"MSM_TSPP_PHYS",
 			"MSM_TSPP_BAM_PHYS";
-		interrupts = <0 153 0>, /* TSIF_TSPP_IRQ */
-			<0 151 0>, /* TSIF0_IRQ */
-			<0 152 0>, /* TSIF1_IRQ */
-			<0 154 0>; /* TSIF_BAM_IRQ */
+		interrupts = <0 121 0>, /* TSIF_TSPP_IRQ */
+			<0 119 0>, /* TSIF0_IRQ */
+			<0 120 0>, /* TSIF1_IRQ */
+			<0 122 0>; /* TSIF_BAM_IRQ */
 		interrupt-names = "TSIF_TSPP_IRQ",
 			"TSIF0_IRQ",
 			"TSIF1_IRQ",
@@ -660,6 +629,15 @@
 				"tsif_data",
 				"tsif_sync";
 		qcom,gpios-func = <1>;
+		
+		qcom,msm-bus,name = "tsif";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+			<82 512 0 0>, /* No vote */
+			<82 512 12288 24576>; /* Max. bandwidth, 2xTSIF, each max of 96Mbps */
+
 	};
 
 	slim_msm: slim@fe12f000 {
@@ -799,7 +777,7 @@
 		interrupts = <0 105 0>;
 		interrupt-names = "qup_err_intr";
 		qcom,i2c-bus-freq = <100000>;
-		qcom,i2c-src-freq = <19200000>;
+		qcom,i2c-src-freq = <50000000>;
 		qcom,master-id = <84>;
 	};
 
@@ -970,10 +948,6 @@
 
 	qcom,msm-compr-dsp {
 		compatible = "qcom,msm-compr-dsp";
-	};
-
-	qcom,msm-compress-dsp {
-		compatible = "qcom,msm-compress-dsp";
 	};
 
 	qcom,msm-voip-dsp {
@@ -1196,7 +1170,6 @@
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
 		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_1_in 1 0>;
 		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
-		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_1_in 3 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
@@ -1290,14 +1263,8 @@
 	};
 
         qcom,msm-rng@f9bff000 {
-		compatible = "qcom,msm-rng";
-		reg = <0xf9bff000 0x200>;
-		qcom,msm-bus,name = "msm-rng-noc";
-		qcom,msm-bus,num-cases = <2>;
-		qcom,msm-bus,num-paths = <1>;
-		qcom,msm-bus,vectors-KBps =
-				<1 618 0 0>,
-				<1 618 0 800>;
+               compatible = "qcom,msm-rng";
+               reg = <0xf9bff000 0x200>;
         };
 
 	qseecom: qcom,qseecom@7f00000 {
@@ -1321,8 +1288,8 @@
 		compatible = "qcom,msm-watchdog";
 		reg = <0xf9017000 0x1000>;
 		interrupts = <0 3 0>, <0 4 0>;
-		qcom,bark-time = <21000>;
-		qcom,pet-time = <20000>;
+		qcom,bark-time = <11000>;
+		qcom,pet-time = <10000>;
 		qcom,ipi-ping;
 	};
 
@@ -1536,15 +1503,8 @@
 		reg = <0xf995d000 0x1000>,
 			<0xf9944000 0x19000>;
 		reg-names = "core_mem", "bam_mem";
-		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
-		#address-cells = <0>;
-		interrupt-parent = <&uart7>;
-		interrupts = <0 1 2>;
-		#interrupt-cells = <1>;
-		interrupt-map-mask = <0xffffffff>;
-		interrupt-map = <0 &intc 0 113 0
-				1 &intc 0 239 0
-				2 &msmgpio 42 0>;
+		interrupts = <0 113 0>, <0 239 0>;
+		interrupt-names = "core_irq", "bam_irq";
 
 		qcom,bam-tx-ep-pipe-index = <0>;
 		qcom,bam-rx-ep-pipe-index = <1>;
@@ -1654,66 +1614,6 @@
 	l2-pmu {
 		compatible = "qcom,l2-pmu";
 		interrupts = <0 1 0>;
-	};
-
-	qcom,smdtty {
-		compatible = "qcom,smdtty";
-
-		smdtty_apps_fm: qcom,smdtty-apps-fm {
-			qcom,smdtty-remote = "wcnss";
-			qcom,smdtty-port-name = "APPS_FM";
-		};
-
-		smdtty_apps_riva_bt_acl: smdtty-apps-riva-bt-acl {
-			qcom,smdtty-remote = "wcnss";
-			qcom,smdtty-port-name = "APPS_RIVA_BT_ACL";
-		};
-
-		smdtty_apps_riva_bt_cmd: qcom,smdtty-apps-riva-bt-cmd {
-			qcom,smdtty-remote = "wcnss";
-			qcom,smdtty-port-name = "APPS_RIVA_BT_CMD";
-		};
-
-		smdtty_mbalbridge: qcom,smdtty-mbalbridge {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "MBALBRIDGE";
-		};
-
-		smdtty_apps_riva_ant_cmd: smdtty-apps-riva-ant-cmd {
-			qcom,smdtty-remote = "wcnss";
-			qcom,smdtty-port-name = "APPS_RIVA_ANT_CMD";
-		};
-
-		smdtty_apps_riva_ant_data: smdtty-apps-riva-ant-data {
-			qcom,smdtty-remote = "wcnss";
-			qcom,smdtty-port-name = "APPS_RIVA_ANT_DATA";
-		};
-
-		smdtty_data1: qcom,smdtty-data1 {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "DATA1";
-		};
-
-		smdtty_data11: qcom,smdtty-data11 {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "DATA11";
-		};
-
-		smdtty_data21: qcom,smdtty-data21 {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "DATA21";
-		};
-
-		smdtty_gps_nmea: smdtty-gpsnmea {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "GPSNMEA";
-		};
-
-		smdtty_loopback: smdtty-loopback {
-			qcom,smdtty-remote = "modem";
-			qcom,smdtty-port-name = "LOOPBACK";
-			qcom,smdtty-dev-name = "LOOPBACK_TTY";
-		};
 	};
 };
 

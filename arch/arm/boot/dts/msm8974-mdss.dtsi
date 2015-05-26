@@ -28,11 +28,6 @@
 		qcom,mdss-pipe-vig-fetch-id = <1 4 7>;
 		qcom,mdss-pipe-rgb-fetch-id = <16 17 18>;
 		qcom,mdss-pipe-dma-fetch-id = <10 13>;
-
-		qcom,mdss-pipe-vig-xin-id = <0 4 8>;
-		qcom,mdss-pipe-rgb-xin-id = <1 5 9>;
-		qcom,mdss-pipe-dma-xin-id = <2 10>;
-
 		qcom,mdss-smp-data = <22 4096>;
 
 		qcom,mdss-ctl-off = <0x00000600 0x00000700 0x00000800
@@ -68,7 +63,6 @@
 			compatible = "qcom,mdss-fb";
 			qcom,memory-reservation-type = "EBI1";
 			qcom,memory-reservation-size = <0x800000>;
-			qcom,memblock-reserve = <0x03200000 0x01E00000>;
 		};
 
 		mdss_fb1: qcom,mdss_fb_external {
@@ -150,6 +144,5 @@
 		qcom,panel-pwm-period = <53>;
 		status = "disable";
 		qcom,mdss-fb-map = <&mdss_fb0>;
-		gpio-panel-hpd = <&msmgpio 102 0>;
 	};
 };

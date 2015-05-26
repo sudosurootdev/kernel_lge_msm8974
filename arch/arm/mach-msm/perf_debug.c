@@ -30,17 +30,6 @@ static char *descriptions =
 	"5  Perf: Add DT support for L1 and L2 PMU\n"
 	"6  Perf: Add cortex A5 device tree support\n"
 	"7  Perf: Add L1 counters to tracepoints\n"
-	"8  Perf: Add cortex A7 perf support\n"
-	"9  ARM: dts: msm: add perf-events support for msm8226\n"
-	"10 Perf: Fix counts across power collapse\n"
-	"11 ARM: dts: msm: add perf-events support for msm8x10, msm8x12\n"
-	"12 Perf: Make per-process counters configurable\n"
-	"13 msm: perf: Add L2 support for tracecounters\n"
-	"14 Perf: keep events across hotplug\n"
-	"15 Perf: bring CPU online if needed when disabling irq\n"
-	"16 Perf: Support sw events across hotplug\n"
-	"17 msm: perf: initialise krait perf L2 counter enables\n"
-	"18 msm: perf: clean up duplicate constraint events\n"
 ;
 
 static ssize_t desc_read(struct file *fp, char __user *buf,

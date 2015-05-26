@@ -29,6 +29,10 @@
 #include <mach/msm_iommu_priv.h>
 #include <mach/socinfo.h>
 
+#ifdef CONFIG_MACH_LGE
+#define QMC_PATCH
+#endif
+
 struct msm_iova_data {
 	struct rb_node node;
 	struct mem_pool *pools;
@@ -189,7 +193,6 @@ int msm_iommu_map_contig_buffer(phys_addr_t phys,
 {
 	unsigned long iova;
 	int ret;
-	struct iommu_domain *domain;
 
 	if (size & (align - 1))
 		return -EINVAL;
@@ -205,14 +208,8 @@ int msm_iommu_map_contig_buffer(phys_addr_t phys,
 	if (ret)
 		return -ENOMEM;
 
-	domain = msm_get_iommu_domain(domain_no);
-	if (!domain) {
-		pr_err("%s: Could not find domain %u. Unable to map\n",
-			__func__, domain_no);
-		msm_free_iova_address(iova, domain_no, partition_no, size);
-		return -EINVAL;
-	}
-	ret = msm_iommu_map_iova_phys(domain, iova, phys, size, cached);
+	ret = msm_iommu_map_iova_phys(msm_get_iommu_domain(domain_no), iova,
+					phys, size, cached);
 
 	if (ret)
 		msm_free_iova_address(iova, domain_no, partition_no, size);
@@ -228,18 +225,10 @@ void msm_iommu_unmap_contig_buffer(unsigned long iova,
 					unsigned int partition_no,
 					unsigned long size)
 {
-	struct iommu_domain *domain;
-
 	if (!msm_use_iommu())
 		return;
 
-	domain = msm_get_iommu_domain(domain_no);
-	if (domain) {
-		iommu_unmap_range(domain, iova, size);
-	} else {
-		pr_err("%s: Could not find domain %u. Unable to unmap\n",
-			__func__, domain_no);
-	}
+	iommu_unmap_range(msm_get_iommu_domain(domain_no), iova, size);
 	msm_free_iova_address(iova, domain_no, partition_no, size);
 }
 EXPORT_SYMBOL(msm_iommu_unmap_contig_buffer);
@@ -247,10 +236,10 @@ EXPORT_SYMBOL(msm_iommu_unmap_contig_buffer);
 static struct msm_iova_data *find_domain(int domain_num)
 {
 	struct rb_root *root = &domain_root;
-	struct rb_node *p;
+	struct rb_node *p = root->rb_node;
 
 	mutex_lock(&domain_mutex);
-	p = root->rb_node;
+
 	while (p) {
 		struct msm_iova_data *node;
 
@@ -552,10 +541,17 @@ int msm_unregister_domain(struct iommu_domain *domain)
 
 	ida_simple_remove(&domain_nums, data->domain_num);
 
-	for (i = 0; i < data->npools; ++i)
-		if (data->pools[i].gpool)
+	for (i = 0; i < data->npools; ++i){
+#ifdef QMC_PATCH
+		/* LGE_CHANGE
+		 * This is w/a code for avoiding kernel crash
+		 * case# 01250901
+		 * 2013-07-22, baryun.hwang@lge.com
+		 */
+		if(data->pools[i].gpool != NULL)
+#endif
 			gen_pool_destroy(data->pools[i].gpool);
-
+	}
 	kfree(data->pools);
 	kfree(data);
 	return 0;

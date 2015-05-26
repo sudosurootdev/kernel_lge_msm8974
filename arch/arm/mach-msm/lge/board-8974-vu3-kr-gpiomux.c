@@ -149,12 +149,6 @@ static struct gpiomux_setting gpio_spi_config = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting gpio_spi_susp_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
 static struct gpiomux_setting gpio_spi_cs1_config = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_6MA,
@@ -802,36 +796,31 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 	{
 		.gpio      = 0,		/* BLSP1 QUP SPI_DATA_MOSI */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 1,		/* BLSP1 QUP SPI_DATA_MISO */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 3,		/* BLSP1 QUP SPI_CLK */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 9,		/* BLSP1 QUP SPI_CS2A_N */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_cs2_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_cs2_config,
 		},
 	},
 	{
 		.gpio      = 8,		/* BLSP1 QUP SPI_CS1_N */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_cs1_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_cs1_config,
 		},
 	},
 #endif
@@ -1585,9 +1574,9 @@ static struct gpiomux_setting sdc3_suspend_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-/*                                      
-                                                     
-                                                                    
+/* LGE_UPDATE, G2-FS@lge.com, 2013/03/27
+* Setting GPIO-37 as IN/PD when sleep in G2-KR-Rev-B.
+* [GPIOMUX_SUSPENDED] = &sdc3_suspend_cfg, //sdc3_data_1_suspend_cfg
 */
 /*
 static struct gpiomux_setting sdc3_data_1_suspend_cfg = {
@@ -2084,7 +2073,7 @@ static struct msm_gpiomux_config msm8974_nfc_configs[] __initdata = {
 	},
 };
 #endif
-/*                                                                     */
+/*  LGE_CHANGE_E, [NFC][wongab.jeon@lge.com], 2013-02-13, NFC Bring up */
 
 #ifdef CONFIG_WIRELESS_CHARGER
 static struct gpiomux_setting wlc_track_cfg ={
@@ -2103,7 +2092,6 @@ static struct msm_gpiomux_config wlc_charger_configs[] __initdata = {
 	},
 };
 #endif
-/*                                                         */
 
 #if defined(CONFIG_USB_LGE_USB3_REDRIVER)
 static struct gpiomux_setting usb3_rd_en_cfg = {
@@ -2277,36 +2265,33 @@ if (socinfo_get_version() >= 0x20000) {
        msm_gpiomux_install(vibrator_configs, ARRAY_SIZE(vibrator_configs));
 #endif
 
-/*                                                        */
+/* LGE_CHANGE_S, [BT][younghyun.kwon@lge.com], 2013-01-29 */
 #ifdef CONFIG_LGE_BLUETOOTH
     bluetooth_msm_gpiomux_install();
-#endif /*                      */
-/*                                                        */
+#endif /* CONFIG_LGE_BLUETOOTH */
+/* LGE_CHANGE_E, [BT][younghyun.kwon@lge.com], 2013-01-29 */
 
-/*                                                                            */
+/* LGE_CHANGE_S, [G2_Broadcast][heri.jang@lge.com], 2013-02-15, LGE_BROADCAST */
 #if defined(CONFIG_LGE_BROADCAST_TDMB)
     msm_gpiomux_install(msm8974_tdmb_configs, ARRAY_SIZE(msm8974_tdmb_configs));
-#endif /*               */
+#endif /* LGE_BROADCAST */
 
 #ifdef CONFIG_NFC_BCM2079X
 	msm_gpiomux_install(msm8974_nfc_configs, ARRAY_SIZE(msm8974_nfc_configs));
 #endif
 
-/*                                                         */
 #ifdef CONFIG_WIRELESS_CHARGER
 	msm_gpiomux_install(wlc_charger_configs,
 				ARRAY_SIZE(wlc_charger_configs));
 #endif
 
-/*                                                         */
-
-/*             
-                        
-                                  
+/* LGE_CHANGE_S
+ * Camera bring up - Vu3
+ * 2013-06-10, soojung.lim@lge.com
  */
 msm_gpiomux_install(msm_sensor_configs, ARRAY_SIZE(msm_sensor_configs));
 
-#if defined(CONFIG_MACH_LGE) /*             */
+#if defined(CONFIG_MACH_LGE) /* LGE_HALL_IC */
 	switch(lge_get_board_revno()) {
 		case HW_REV_A:
 			msm_gpiomux_install(msm_hall_ic_configs_rev_a, ARRAY_SIZE(msm_hall_ic_configs_rev_a));

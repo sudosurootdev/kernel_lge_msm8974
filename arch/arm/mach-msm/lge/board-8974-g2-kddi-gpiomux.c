@@ -20,8 +20,8 @@
 #include <mach/board_lge.h>
 
 //#define KS8851_IRQ_GPIO 94
-/*                                
-                                          
+/* soojung.lim@lge.com, 2013-05-23
+ * To use 24MHz GP/GCC_GP clock for V2 H/W
  */
 int g_is_tlmm_spare_reg_value = 0;
 
@@ -170,12 +170,6 @@ static struct gpiomux_setting snfc_hvdd_cfg = {
     .pull = GPIOMUX_PULL_NONE,
     .dir = GPIOMUX_OUT_LOW,
 };
-static struct gpiomux_setting snfc_uicc_cfg = {
-    .func = GPIOMUX_FUNC_GPIO,
-    .drv = GPIOMUX_DRV_2MA,
-    .pull = GPIOMUX_PULL_NONE,
-    .dir = GPIOMUX_OUT_HIGH,
-};
 #endif
 static struct gpiomux_setting gpio_uart_config = {
 	.func = GPIOMUX_FUNC_2,
@@ -208,12 +202,6 @@ static struct gpiomux_setting gpio_spi_config = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_12MA,
 	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gpio_spi_susp_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
 };
 
 static struct gpiomux_setting gpio_spi_cs1_config = {
@@ -1017,13 +1005,6 @@ static struct msm_gpiomux_config msm8974_nfc_configs_revc[] __initdata ={
 			.settings = {
 				[GPIOMUX_SUSPENDED] = &snfc_hvdd_cfg,
 			},
-		},
-		/* NFC UICC_VCC_CONTROL */
-		{
-			.gpio = 25,
-			.settings = {
-				[GPIOMUX_SUSPENDED] = &snfc_uicc_cfg,
-			},
 		},	
 };	
 static struct msm_gpiomux_config msm8974_nfc_configs_revb[] __initdata ={
@@ -1078,14 +1059,7 @@ static struct msm_gpiomux_config msm8974_nfc_configs_revb[] __initdata ={
 			.settings = {
 				[GPIOMUX_SUSPENDED] = &snfc_hvdd_cfg,
 			},
-		},
-		/* NFC UICC_VCC_CONTROL */
-		{
-			.gpio = 25,
-			.settings = {
-				[GPIOMUX_SUSPENDED] = &snfc_uicc_cfg,
-			},
-		},		
+		},	
 };	
 #endif
 
@@ -1094,36 +1068,31 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 	{
 		.gpio      = 0,		/* BLSP1 QUP SPI_DATA_MOSI */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 1,		/* BLSP1 QUP SPI_DATA_MISO */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 3,		/* BLSP1 QUP SPI_CLK */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 9,		/* BLSP1 QUP SPI_CS2A_N */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_cs2_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_cs2_config,
 		},
 	},
 	{
 		.gpio      = 8,		/* BLSP1 QUP SPI_CS1_N */
 		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_cs1_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_cs1_config,
 		},
 	},
 #endif
@@ -2288,7 +2257,7 @@ if (socinfo_get_version() >= 0x20000) {
 
 #if defined (CONFIG_LGE_BROADCAST_ONESEG)
     msm_gpiomux_install(lge_1seg_blsp_configs, ARRAY_SIZE(lge_1seg_blsp_configs));
-#endif  /*                             */
+#endif  /* CONFIG_LGE_BROADCAST_ONESEG */
 
 #if defined(CONFIG_LGE_NFC_SONY_KDDI)
 	if (lge_get_board_revno() >= HW_REV_C)

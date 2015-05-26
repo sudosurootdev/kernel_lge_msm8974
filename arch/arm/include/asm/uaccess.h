@@ -110,35 +110,35 @@ extern int __get_user_4(void *);
 #define __GUP_CLOBBER_4	"lr", "cc"
 
 #define __get_user_x(__r2,__p,__e,__l,__s)				\
-	   __asm__ __volatile__ (					\
+	   __asm__ __volatile__ (							\
 		__asmeq("%0", "r0") __asmeq("%1", "r2")			\
-		__asmeq("%3", "r1")					\
-		"bl	__get_user_" #__s				\
-		: "=&r" (__e), "=r" (__r2)				\
-		: "0" (__p), "r" (__l)					\
+		__asmeq("%3", "r1")								\
+		"bl	__get_user_" #__s							\
+		: "=&r" (__e), "=r" (__r2)						\
+		: "0" (__p), "r" (__l)							\
 		: __GUP_CLOBBER_##__s)
 
-#define get_user(x,p)							\
-	({								\
-		unsigned long __limit = current_thread_info()->addr_limit - 1; \
-		register const typeof(*(p)) __user *__p asm("r0") = (p);\
-		register unsigned long __r2 asm("r2");			\
-		register unsigned long __l asm("r1") = __limit;		\
-		register int __e asm("r0");				\
-		switch (sizeof(*(__p))) {				\
-		case 1:							\
-			__get_user_x(__r2, __p, __e, __l, 1);		\
-			break;						\
-		case 2:							\
-			__get_user_x(__r2, __p, __e, __l, 2);		\
-			break;						\
-		case 4:							\
-			__get_user_x(__r2, __p, __e, __l, 4);		\
-			break;						\
-		default: __e = __get_user_bad(); break;			\
-		}							\
-		x = (typeof(*(p))) __r2;				\
-		__e;							\
+#define get_user(x,p)													\
+	({																	\
+		unsigned long __limit = current_thread_info()->addr_limit - 1; 	\
+		register const typeof(*(p)) __user *__p asm("r0") = (p);		\
+		register unsigned long __r2 asm("r2");							\
+		register unsigned long __l asm("r1") = __limit;					\
+		register int __e asm("r0");										\
+		switch (sizeof(*(__p))) {										\
+		case 1:															\
+			__get_user_x(__r2, __p, __e, __l, 1);						\
+			break;														\
+		case 2:															\
+			__get_user_x(__r2, __p, __e, __l, 2);						\
+			break;														\
+		case 4:															\
+	       	__get_user_x(__r2, __p, __e, __l, 4);						\
+			break;														\
+		default: __e = __get_user_bad(); break;							\
+		}																\
+		x = (typeof(*(p))) __r2;										\
+		__e;															\
 	})
 
 extern int __put_user_1(void *, unsigned int);

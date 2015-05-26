@@ -292,7 +292,6 @@ static struct {
 	int	user_cal_rcvd;
 	int	user_cal_exp_size;
 	int	device_opened;
-	int	iris_xo_mode_set;
 	struct mutex dev_lock;
 	wait_queue_head_t read_wait;
 } *penv = NULL;
@@ -513,14 +512,6 @@ void wcnss_pronto_log_debug_regs(void)
 }
 EXPORT_SYMBOL(wcnss_pronto_log_debug_regs);
 
-#ifdef CONFIG_WCNSS_REGISTER_DUMP_ON_BITE
-void wcnss_log_debug_regs_on_bite(void)
-{
-	if (wcnss_hardware_type() == WCNSS_PRONTO_HW)
-		wcnss_pronto_log_debug_regs();
-}
-#endif
-
 /* interface to reset wcnss by sending the reset interrupt */
 void wcnss_reset_intr(void)
 {
@@ -622,7 +613,7 @@ static void wcnss_post_bootup(struct work_struct *work)
 
 	/* Since WCNSS is up, cancel any APPS vote for Iris & WCNSS VREGs  */
 	wcnss_wlan_power(&penv->pdev->dev, &penv->wlan_config,
-		WCNSS_WLAN_SWITCH_OFF, NULL);
+		WCNSS_WLAN_SWITCH_OFF);
 
 }
 
@@ -893,14 +884,6 @@ int wcnss_xo_auto_detect_enabled(void)
 {
 	return (has_autodetect_xo == 1 ? 1 : 0);
 }
-
-int wcnss_wlan_iris_xo_mode(void)
-{
-	if (penv && penv->pdev && penv->smd_channel_ready)
-		return penv->iris_xo_mode_set;
-	return -ENODEV;
-}
-EXPORT_SYMBOL(wcnss_wlan_iris_xo_mode);
 
 
 void wcnss_suspend_notify(void)
@@ -1584,8 +1567,7 @@ wcnss_trigger_config(struct platform_device *pdev)
 
 	/* power up the WCNSS */
 	ret = wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
-					WCNSS_WLAN_SWITCH_ON,
-					&penv->iris_xo_mode_set);
+					WCNSS_WLAN_SWITCH_ON);
 	if (ret) {
 		dev_err(&pdev->dev, "WCNSS Power-up failed.\n");
 		goto fail_power;
@@ -1686,7 +1668,7 @@ fail_res:
 		subsystem_put(penv->pil);
 fail_pil:
 	wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
-				WCNSS_WLAN_SWITCH_OFF, NULL);
+				WCNSS_WLAN_SWITCH_OFF);
 fail_power:
 	if (has_pronto_hw)
 		wcnss_pronto_gpios_config(&pdev->dev, false);

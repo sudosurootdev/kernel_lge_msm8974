@@ -330,24 +330,6 @@ static enum msm_cpu cpu_of_id[] = {
 	[185] = MSM_CPU_8974,
 	[186] = MSM_CPU_8974,
 
-	/* 8974AA IDs */
-	[208] = MSM_CPU_8974PRO_AA,
-	[211] = MSM_CPU_8974PRO_AA,
-	[214] = MSM_CPU_8974PRO_AA,
-	[217] = MSM_CPU_8974PRO_AA,
-
-	/* 8974AB IDs */
-	[209] = MSM_CPU_8974PRO_AB,
-	[212] = MSM_CPU_8974PRO_AB,
-	[215] = MSM_CPU_8974PRO_AB,
-	[218] = MSM_CPU_8974PRO_AB,
-
-	/* 8974AC IDs */
-	[194] = MSM_CPU_8974PRO_AC,
-	[210] = MSM_CPU_8974PRO_AC,
-	[213] = MSM_CPU_8974PRO_AC,
-	[216] = MSM_CPU_8974PRO_AC,
-
 	/* 8625 IDs */
 	[127] = MSM_CPU_8625,
 	[128] = MSM_CPU_8625,
@@ -450,8 +432,10 @@ static struct socinfo_v1 dummy_socinfo = {
 	.format = 1,
 	.version = 1,
 };
-/*                                                                         */
+
 #ifndef CONFIG_MACH_MSM8974_G2_KDDI
+/*LGE_CHANGE_S, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
+/*LGE_UPDATE_S, jongbum.kim, 20111024 -->[*/
 u16 *poweron_st = 0;
 uint16_t power_on_status_info_get(void)
 {
@@ -461,8 +445,8 @@ uint16_t power_on_status_info_get(void)
     return *poweron_st;
 }
 EXPORT_SYMBOL(power_on_status_info_get);
-/*                             */
-/*                                                                         */
+/*LGE_UPDATE_E,jongbum.kim <--]*/
+/*LGE_CHANGE_E, hyeongjin.kim@lge.com, 2013-03-29, HiddenMenu SMPL Counter */
 #endif
 
 uint32_t socinfo_get_id(void)

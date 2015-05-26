@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,8 +19,6 @@
 
 #define HFI_EVENT_SESSION_SEQUENCE_CHANGED (HFI_OX_BASE + 0x3)
 #define HFI_EVENT_SESSION_PROPERTY_CHANGED (HFI_OX_BASE + 0x4)
-#define HFI_EVENT_SESSION_LTRUSE_FAILED (HFI_OX_BASE + 0x5)
-#define HFI_EVENT_RELEASE_BUFFER_REFERENCE (HFI_OX_BASE + 0x6)
 
 #define HFI_EVENT_DATA_SEQUENCE_CHANGED_SUFFICIENT_BUFFER_RESOURCES	\
 	(HFI_OX_BASE + 0x1)
@@ -41,8 +39,9 @@
 #define HFI_BUFFERFLAG_EOSEQ			0x00200000
 #define HFI_BUFFERFLAG_DISCONTINUITY	0x80000000
 #define HFI_BUFFERFLAG_TEI				0x40000000
-#define HFI_BUFFERFLAG_DROP_FRAME               0x20000000
-
+//LGE_CHANGE_S, [Player][nikech.choi@lge.com], 2013.09.04, QMC Venus FW V25
+#define HFI_BUFFERFLAG_DROP_FRAME 0x20000000
+//LGE_CHANGE_E, [Player][nikech.choi@lge.com], 2013.09.04, QMC Venus FW V25
 
 #define HFI_ERR_SESSION_EMPTY_BUFFER_DONE_OUTPUT_PENDING	\
 	(HFI_OX_BASE + 0x1001)
@@ -62,7 +61,6 @@
 
 #define HFI_BUFFER_MODE_STATIC (HFI_OX_BASE + 0x1)
 #define HFI_BUFFER_MODE_RING (HFI_OX_BASE + 0x2)
-#define HFI_BUFFER_MODE_DYNAMIC (HFI_OX_BASE + 0x3)
 
 #define HFI_FLUSH_INPUT (HFI_OX_BASE + 0x1)
 #define HFI_FLUSH_OUTPUT (HFI_OX_BASE + 0x2)
@@ -85,7 +83,6 @@
 #define HFI_EXTRADATA_MULTISLICE_INFO		0x7F100000
 #define HFI_EXTRADATA_NUM_CONCEALED_MB		0x7F100001
 #define HFI_EXTRADATA_INDEX					0x7F100002
-#define HFI_EXTRADATA_METADATA_LTR			0x7F100003
 #define HFI_EXTRADATA_METADATA_FILLER		0x7FE00002
 
 #define HFI_INDEX_EXTRADATA_INPUT_CROP		0x0700000E
@@ -141,10 +138,6 @@ struct hfi_extradata_header {
 	(HFI_PROPERTY_PARAM_OX_START + 0x008)
 #define HFI_PROPERTY_PARAM_S3D_FRAME_PACKING_EXTRADATA	\
 	(HFI_PROPERTY_PARAM_OX_START + 0x009)
-#define HFI_PROPERTY_PARAM_ERR_DETECTION_CODE_EXTRADATA	\
-	(HFI_PROPERTY_PARAM_OX_START + 0x00A)
-#define  HFI_PROPERTY_PARAM_BUFFER_ALLOC_MODE_SUPPORTED	\
-	(HFI_PROPERTY_PARAM_OX_START + 0x00B)
 
 #define HFI_PROPERTY_CONFIG_OX_START					\
 	(HFI_DOMAIN_BASE_COMMON + HFI_ARCH_OX_OFFSET + 0x02000)
@@ -220,8 +213,6 @@ struct hfi_extradata_header {
 	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x001)
 #define  HFI_PROPERTY_PARAM_VENC_H264_IDR_S3D_FRAME_PACKING_NAL \
 	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x002)
-#define  HFI_PROPERTY_PARAM_VENC_LTR_INFO			\
-	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x003)
 
 #define HFI_PROPERTY_CONFIG_VENC_OX_START				\
 	(HFI_DOMAIN_BASE_VENC + HFI_ARCH_OX_OFFSET + 0x6000)
@@ -288,12 +279,6 @@ struct hfi_interlace_format_supported {
 	u32 format;
 };
 
-struct hfi_buffer_alloc_mode_supported {
-	u32 buffer_type;
-	u32 num_entries;
-	u32 rg_data[1];
-};
-
 struct hfi_mb_error_map {
 	u32 error_map_size;
 	u8 rg_error_map[1];
@@ -353,6 +338,7 @@ struct hfi_uncompressed_plane_actual_constraints_info {
 #define HFI_MSG_SYS_OX_START			\
 (HFI_DOMAIN_BASE_COMMON + HFI_ARCH_OX_OFFSET + HFI_MSG_START_OFFSET + 0x0000)
 #define HFI_MSG_SYS_PING_ACK	(HFI_MSG_SYS_OX_START + 0x2)
+#define HFI_MSG_SYS_PROPERTY_INFO	(HFI_MSG_SYS_OX_START + 0x3)
 #define HFI_MSG_SYS_SESSION_ABORT_DONE	(HFI_MSG_SYS_OX_START + 0x4)
 
 #define HFI_MSG_SESSION_OX_START		\
@@ -425,7 +411,7 @@ struct hfi_cmd_session_empty_buffer_compressed_packet {
 	u32 input_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane0_packet {
@@ -444,7 +430,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane0_packet {
 	u32 input_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane1_packet {
@@ -453,7 +439,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane1_packet {
 	u32 filled_len;
 	u32 offset;
 	u8 *packet_buffer2;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane2_packet {
@@ -462,7 +448,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane2_packet {
 	u32 filled_len;
 	u32 offset;
 	u8 *packet_buffer3;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_fill_buffer_packet {
@@ -476,7 +462,7 @@ struct hfi_cmd_session_fill_buffer_packet {
 	u32 output_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_flush_packet {

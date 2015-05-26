@@ -179,9 +179,7 @@ static int max17048_get_status(struct i2c_client *client)
 		dev_err(&client->dev, "%s: err %d\n", __func__, status);
 		return status;
 	} else {
-#ifdef MAX17048_DEBUG
 		printk(KERN_ERR "%s : status = 0x%x\n", __func__, status);
-#endif
 		chip->status = status;
 		return 0;
 	}
@@ -220,11 +218,17 @@ static int max17048_get_capacity_from_soc(void)
 
 	/* SOC scaling for stable max SOC and changed Cut-off */
 	/*Adj SOC = (FG SOC-Emply)/(Full-Empty)*100*/
-#if defined (CONFIG_MACH_MSM8974_G2_KR) || defined(CONFIG_MACH_MSM8974_VU3_KR)
+#ifdef CONFIG_MACH_MSM8974_G2_KR
 	batt_soc = (batt_soc-((ref->model_data->empty)*100000))
 						/(9400-(ref->model_data->empty))*10000;
+#elif defined (CONFIG_MACH_MSM8974_VU3_KR)
+	batt_soc = (batt_soc-((ref->model_data->empty)*100000))
+						/(9200-(ref->model_data->empty))*10000;
 #elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI)
+	if(buf[0] > 0)
 	batt_soc = batt_soc/94*100+10000000;
+#elif defined (CONFIG_MACH_MSM8974_G2_KDDI)
+	batt_soc = (batt_soc-20000000)/(96-2)*100;
 #else
 	batt_soc = batt_soc/94*100;
 #endif
@@ -424,7 +428,10 @@ static void max17048_polling_work(struct work_struct *work)
 		capacity = (capacity-((ref->model_data->empty)*100000))
 						/(9400-(ref->model_data->empty))*10000;
 #elif defined (CONFIG_MACH_MSM8974_Z_KR) || defined(CONFIG_MACH_MSM8974_Z_US) || defined(CONFIG_MACH_MSM8974_Z_KDDI)
+		if ( buf[0] > 0)
 		capacity = capacity/94*100 + 10000000;
+#elif defined (CONFIG_MACH_MSM8974_G2_KDDI)
+		capacity = (capacity-20000000)/(96-2)*100;
 #else
 		capacity = capacity/94*100;
 #endif
@@ -503,10 +510,8 @@ static void max17048_work(struct work_struct *work)
 	max17048_get_vcell(chip->client);
 	max17048_get_soc(chip->client);
 
-#ifdef MAX17048_DEBUG
 	printk(KERN_ERR "%s : Raw SOC : 0x%x / vcell : 0x%x\n",
 		__func__, chip->soc, chip->vcell);
-#endif
 
 #ifdef CONFIG_LGE_PM
 	if ( (abs(chip->voltage - chip->lasttime_voltage) >= 50) ||
@@ -522,10 +527,8 @@ static void max17048_work(struct work_struct *work)
 				goto psy_error;
 		}
 
-#ifdef MAX17048_DEBUG
 		printk(KERN_ERR "%s : Reported Capacity : %d / voltage : %d\n",
 				__func__, chip->capacity_level, chip->voltage);
-#endif
 
 		power_supply_changed(chip->batt_psy);
 	}
@@ -603,9 +606,7 @@ static int max17048_clear_interrupt(struct i2c_client *client)
 {
 	struct max17048_chip *chip = i2c_get_clientdata(client);
 	int ret;
-#ifdef MAX17048_DEBUG
 	printk(KERN_INFO "%s.\n", __func__);
-#endif
 	if (chip == NULL)
 		return -ENODEV;
 
@@ -886,8 +887,10 @@ ssize_t max17048_show_capacity(struct device *dev,
 	int level = 0;
 
 	if (ref == NULL)
-		return snprintf(buf, PAGE_SIZE, "ERROR\n");
-
+	{
+		level = 100;
+		return snprintf(buf, PAGE_SIZE, "%d\n", level);
+	}
 	if (lge_power_test_flag == 1) {
 #ifdef CONFIG_MAX17048_SOC_ALERT
 		disable_irq(gpio_to_irq(ref->model_data->alert_gpio));
@@ -1064,11 +1067,6 @@ static int __devinit max17048_probe(struct i2c_client *client,
 		(smem_get_entry(SMEM_BATT_INFO, &smem_size));
 
 	if (smem_size != 0 && batt_id){
-		if(*batt_id == BATT_NOT_PRESENT) {
-			printk(KERN_INFO "[MAX17048] probe : skip for no model data\n");
-			ref = NULL;
-			return 0;
-		}
 
 #if defined(CONFIG_MACH_MSM8974_G2_KR) || defined(CONFIG_MACH_MSM8974_VU3_KR)
 		else if(*batt_id == BATT_DS2704_L || *batt_id == BATT_ISL6296_C){
@@ -1106,7 +1104,7 @@ static int __devinit max17048_probe(struct i2c_client *client,
 		ret = bq24192_is_ready();
 	else
 		ret = smb349_is_ready();
-#elif defined(CONFIG_MACH_MSM8974_Z_KDDI) || defined(CONFIG_MACH_MSM8974_Z_TMO_US) || defined(CONFIG_MACH_MSM8974_Z_ATT_US)
+#elif defined(CONFIG_MACH_MSM8974_Z_KDDI) || defined(CONFIG_MACH_MSM8974_Z_TMO_US) || defined(CONFIG_MACH_MSM8974_Z_ATT_US)|| defined(CONFIG_MACH_MSM8974_Z_OPEN_COM)
 	ret = bq24192_is_ready();
 #else
 #if defined(CONFIG_MACH_MSM8974_G2_KR) || defined(CONFIG_MACH_MSM8974_G2_ATT) || defined(CONFIG_MACH_MSM8974_G2_TEL_AU)
@@ -1222,6 +1220,12 @@ static int __devinit max17048_probe(struct i2c_client *client,
 		goto err_create_file_fuelrst_failed;
 	}
 #endif
+
+	if(*batt_id == BATT_NOT_PRESENT) {
+		printk(KERN_INFO "[MAX17048] probe : skip for no model data\n");
+		ref = NULL;
+		return 0;
+	}
 
 	INIT_DELAYED_WORK(&chip->work, max17048_work);
 #ifdef CONFIG_MAX17048_POLLING

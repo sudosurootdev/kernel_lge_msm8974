@@ -668,7 +668,7 @@ int q6lsm_snd_model_buf_free(struct lsm_client *client)
 	rc = q6lsm_memory_unmap_regions(client,
 					client->sound_model.mem_map_handle);
 	if (rc < 0)
-		pr_err("%s CMD Memory_unmap_regions failed\n", __func__);
+ 		pr_err("%s CMD Memory_unmap_regions failed\n", __func__);
 
 	if (client->sound_model.data) {
 		ion_unmap_kernel(client->sound_model.client,

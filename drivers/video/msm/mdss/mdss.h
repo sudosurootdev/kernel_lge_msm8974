@@ -26,8 +26,6 @@
 #define MDSS_REG_WRITE(addr, val) writel_relaxed(val, mdss_res->mdp_base + addr)
 #define MDSS_REG_READ(addr) readl_relaxed(mdss_res->mdp_base + addr)
 
-#define MAX_DRV_SUP_MMB_BLKS	44
-
 enum mdss_mdp_clk_type {
 	MDSS_CLK_AHB,
 	MDSS_CLK_AXI,
@@ -69,15 +67,12 @@ struct mdss_data_type {
 	size_t mdp_reg_size;
 	char __iomem *vbif_base;
 
-	struct mutex reg_lock;
-
 	u32 irq;
 	u32 irq_mask;
 	u32 irq_ena;
 	u32 irq_buzy;
 	u32 has_bwc;
 	u32 has_decimation;
-	u8 has_wfd_blk;
 
 	u32 mdp_irq_mask;
 	u32 mdp_hist_irq_mask;
@@ -91,10 +86,8 @@ struct mdss_data_type {
 	u32 res_init;
 	u32 bus_hdl;
 
-	u32 highest_bank_bit;
 	u32 smp_mb_cnt;
 	u32 smp_mb_size;
-	u32 smp_mb_per_pipe;
 
 	u32 rot_block_size;
 
@@ -106,9 +99,6 @@ struct mdss_data_type {
 	u32 nvig_pipes;
 	u32 nrgb_pipes;
 	u32 ndma_pipes;
-
-	DECLARE_BITMAP(mmb_alloc_map, MAX_DRV_SUP_MMB_BLKS);
-
 	struct mdss_mdp_mixer *mixer_intf;
 	struct mdss_mdp_mixer *mixer_wb;
 	u32 nmixers_intf;
@@ -130,9 +120,6 @@ struct mdss_data_type {
 
 	struct early_suspend early_suspend;
 	void *debug_data;
-	struct completion iommu_attach_done;
-	int current_bus_idx;
-	bool mixer_switched;
 };
 extern struct mdss_data_type *mdss_res;
 
@@ -155,7 +142,6 @@ int mdss_register_irq(struct mdss_hw *hw);
 void mdss_enable_irq(struct mdss_hw *hw);
 void mdss_disable_irq(struct mdss_hw *hw);
 void mdss_disable_irq_nosync(struct mdss_hw *hw);
-void mdss_bus_bandwidth_ctrl(int enable);
 
 static inline struct ion_client *mdss_get_ionclient(void)
 {
